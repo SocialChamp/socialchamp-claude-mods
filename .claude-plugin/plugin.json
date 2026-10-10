@@ -1,6 +1,6 @@
 {
   "name": "socialchamp-calendar",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Social Champ calendar inside Claude Code: week, month and day views, failed-post watch, approvals",
   "author": {
     "name": "Social Champ"

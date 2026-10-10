@@ -6,7 +6,7 @@ import {
   clip, isMovable, isPlaceable, loadRange, parseWhen, platform,
   charLimit, rangeFor, rangeLabel, slim, slimChannels, slimWorkspaces, snippet,
   timeOf, whenLabel, hasPassed, onDay, ymd,
-  writeProblem, errorClass, isHandOffSafe, fenced, socialChampTool, callArgs, chatVerdict,
+  writeProblem, errorClass, isHandOffSafe, fenced, socialChampTool, callArgs, chatVerdict, serverNames, isMissingServer, CHAT_READS,
   parseSummary, summaryByDay, parseDrafts, DRAFT_PAGE, parseTimetable, openSlots, parseShares, parseCollections, snapshotOf, changedSince, spanOf, FIRST_COMMENT_LIMIT, bulkFailures, checkStaged, briefOf, STAGE_LIMIT,
   generatedImageUrls, matchedEntries,
 } from './data'
@@ -103,6 +103,11 @@ async function set<K extends Key>($: EngineInterface, key: K, value: Ui[K]) {
 
 // Set from the manifest's userConfig each time the module registers.
 let server = 'SocialChamp'
+let configuredServer = 'SocialChamp'
+// Whether a call has reached Social Champ under `server`; until then a read told that no such server exists looks
+// for the connector under its other common names, once, for every call waiting on it.
+let serverFound = false
+let finding: Promise<string> | null = null
 let loadSeq = 0
 
 
@@ -155,10 +160,56 @@ async function reportUnfinished($: EngineInterface) {
     `${timeOf(left.at)}. Check it in Social Champ.`, { timeoutMs: 15000 })
 }
 
+const resultText = (result: { content: { type: string; text?: string }[] }) =>
+  result.content.find(b => b.type === 'text')?.text ?? ''
+
+/**
+ * The call itself. A read that the engine answers with "no such server" while the connector has not been found
+ * looks for it under its other names (see findServer) and is sent there. Any other failure is the call's own and is
+ * never retried elsewhere, and writes are never retried at all: one that failed on the way might still have run.
+ */
+async function reach($: EngineInterface, tool: string, args: Record<string, unknown>) {
+  const mayLook = !serverFound && CHAT_READS.has(tool)
+  try {
+    const result = await $.mcp.call(server, tool, args)
+    if (!(result.isError && isMissingServer(resultText(result)))) { serverFound = true; return result }
+    if (!mayLook) return result
+  } catch (error) {
+    if (!mayLook || !isMissingServer(String(error))) throw error
+  }
+  finding ??= findServer($)
+  server = await finding
+  serverFound = true
+  return $.mcp.call(server, tool, args)
+}
+
+/**
+ * The connector's name when the configured one does not exist: the one other common name that answers a read. None,
+ * or more than one (two connectors could be two accounts), is an error that says what to set; nothing is guessed.
+ */
+async function findServer($: EngineInterface): Promise<string> {
+  const others = serverNames(configuredServer).slice(1)
+  const present = await Promise.all(others.map(async name => {
+    try {
+      const result = await $.mcp.call(name, 'get_workspaces', {})
+      return result.isError && isMissingServer(resultText(result)) ? null : name
+    } catch (error) {
+      return isMissingServer(String(error)) ? null : name
+    }
+  }))
+  const found = present.filter((name): name is string => name !== null)
+  if (found.length === 1) return found[0]!
+  finding = null
+  const configure = '/plugin configure socialchamp-calendar@socialchamp-mods'
+  throw new Error(found.length === 0
+    ? `No Social Champ connector named ${[configuredServer, ...others].join(', ')}. Add it, or set its name with ${configure}.`
+    : `Social Champ is connected under more than one name (${found.join(', ')}). Choose one with ${configure}.`)
+}
+
 /** One MCP call, its JSON text block parsed; an error result throws its text. */
 async function sc<T>($: EngineInterface, tool: string, args: Record<string, unknown> = {}): Promise<T> {
-  const result = await $.mcp.call(server, tool, args)
-  const text = result.content.find(b => b.type === 'text')?.text ?? ''
+  const result = await reach($, tool, args)
+  const text = resultText(result)
   if (result.isError) throw new Error(text.slice(0, 300) || `${tool} failed`)
   try {
     return JSON.parse(text) as T
@@ -1276,6 +1327,9 @@ export type Act = ReturnType<typeof makeAct>
 
 export const register: Register = (on, options) => {
   server = String(options.server ?? 'SocialChamp')
+  configuredServer = server
+  serverFound = false
+  finding = null
   pollDefault = Number(options.pollMinutes ?? 5)
 
   // Claude's Social Champ calls from chat need a person's yes. A failure before the call refuses it; one after

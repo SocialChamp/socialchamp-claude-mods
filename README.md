@@ -6,9 +6,11 @@ Yes; every change Claude makes from chat asks you in Claude Code's own question 
 
 ## Install
 
-You need Claude Code with mods (plugins with hooks) and the [Social Champ MCP connector](https://github.com/SocialChamp/socialchamp-mcp)
-connected. The mod looks for a connector named `SocialChamp`; if `/mcp` lists yours under another name, set it in the
-plugin's options.
+You need Claude Code with mods (plugins with hooks; built and tested on 2.1.293) and the
+[Social Champ MCP connector](https://github.com/SocialChamp/socialchamp-mcp) connected. The mod uses the connector
+named `SocialChamp`; if there is none, it uses whichever one of `socialchamp`, `Social Champ` or `social-champ` exists.
+If none does, or more than one does (two connectors may be two accounts, so the mod will not guess), set the one to
+use in Claude Code with `/plugin configure socialchamp-calendar@socialchamp-mods`.
 
 ```bash
 claude plugin marketplace add SocialChamp/socialchamp-claude-mods
@@ -33,7 +35,7 @@ so team members see the pane without those parts; approving and rejecting need t
   reschedule (±1 hour, +1 day, a typed time, retry a failed post), drag a post to another day in Week view,
   move a whole day, edit a post's words, labels, pause and resume a channel or workspace, share a date range as a
   link and turn links off, duplicate to another channel, recycle into a collection, Instagram first comment,
-  approval reminder, approve / reject (when the connection may), delete a post or a draft (cannot be undone).
+  approval reminder, approve / reject (when the connection may), delete a post (cannot be undone; drafts are deleted in Social Champ, see Known gaps).
 - **Several posts at once**: select in Day or Issues, then move, retry every failed one, or add a label.
 - **New post**: Claude or Social Champ AI writes it, shortens, expands, rephrases, adds hashtags; the channel's
   character limit; free queue slots as one-press times; an AI image (one a session by default).
@@ -60,7 +62,14 @@ so team members see the pane without those parts; approving and rejecting need t
 In auto mode the pane's own calls were refused until the tools had `permissions.allow` rules in
 `~/.claude/settings.json`. These rules also let Claude call the tools from chat without Claude Code's own
 prompt; the guard above still asks you for every write. The mod never edits settings. Each rule is
-`mcp__SocialChamp__<tool>`:
+`mcp__<connector>__<tool>`, where `<connector>` is the name `/mcp` lists with spaces as underscores: `mcp__SocialChamp__update_post`,
+`mcp__socialchamp__update_post` or `mcp__Social_Champ__update_post`. In `~/.claude/settings.json`:
+
+```json
+{ "permissions": { "allow": ["mcp__socialchamp__get_paginated_posts", "mcp__socialchamp__update_post"] } }
+```
+
+The tools:
 
 - Reads: `get_paginated_posts`, `get_channels`, `get_workspaces`, `approval_list_pending`, `label_list`,
   `get_shareable_calendars`, `get_calendar_events`, `get_calendar_summary`, `get_drafts`, `get_queue_slots`,

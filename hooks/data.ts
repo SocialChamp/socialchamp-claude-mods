@@ -529,6 +529,23 @@ const squashed = (name: string) => name.replace(/[^A-Za-z0-9]/g, '').toLowerCase
  * name, spelled as tool prefixes are, matches the configured one, "SocialChamp" or "Social Champ", or contains
  * "socialchamp" once punctuation is dropped: an unusual name errs toward asking, not toward passing.
  */
+/**
+ * The names to try for the connector. A name set in the plugin's options is used alone; the default also tries the
+ * names its README and Claude's connector settings add it under.
+ */
+export const serverNames = (configured: string) =>
+  configured === 'SocialChamp' ? ['SocialChamp', 'socialchamp', 'Social Champ', 'social-champ'] : [configured]
+
+/**
+ * Whether a failure is the engine saying no server goes by that name ("MCP server not found", "MCP server not
+ * connected: <name>", "MCP server <name> is not connected"), as opposed to the tool failing. A server that exists
+ * but failed ("... is not connected (status: failed)") is not missing: falling back from it could reach another
+ * account. Only a missing server sends a read to look for the connector under another name.
+ */
+export const isMissingServer = (text: string) =>
+  /\bMCP server not found\b|\bMCP server not connected:|\bMCP server .{1,80}? is not connected(?! \(status)|\b(no|unknown) MCP server\b/i
+    .test(text)
+
 /** The prefix of the tools this mod registers itself (mcp__<plugin>__<tool>). */
 export const OWN_TOOLS = 'socialchamp-calendar'
 
