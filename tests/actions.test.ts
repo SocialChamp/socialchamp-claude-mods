@@ -213,3 +213,33 @@ test('moving to the next week reads its posts once', async ($, on) => {
   await fake.clock.advance(10)
   expect(fake.calls.filter(c => c.tool === 'get_paginated_posts').length - before).toBe(1)
 })
+
+test('a write whose connector disappears is sent once and never to another name', async ($, on) => {
+  const sent: string[] = []
+  mock.store(on)
+  mock.clock(on, { now: Date.now() })
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('mcp.call', (_$, e) => {
+    sent.push(`${e.server}:${e.tool}`)
+    const missing = { value: { content: [{ type: 'text', text: 'MCP server not found' }], isError: true } }
+    // The connector exists only as "socialchamp", and drops out just as the write goes.
+    if (e.server !== 'socialchamp' || e.tool === 'update_post') return missing
+    const answers: Record<string, unknown> = {
+      get_paginated_posts: { posts: POSTS, pagination: { page: 1, totalPages: 1 } },
+      get_channels: { items: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }] },
+      get_workspaces: { items: [{ id: 'w1', name: 'Social Champ', profilesCount: 1 }] },
+    }
+    return { value: { content: [{ type: 'text', text: JSON.stringify(answers[e.tool] ?? { items: [] }) }], isError: false } }
+  })
+  await $.command.run({ command: 'socialchamp-calendar', args: 'day', ...RUN })
+  const ui = await $.ui.mount({ plugin: 'socialchamp-calendar', surface: 'desktop', component: 'Pane', requestId: 'socialchamp-calendar', props: PANE })
+  await ui.press({ plugin: 'socialchamp-calendar', key: 'today' })
+  await ui.press({ plugin: 'socialchamp-calendar', key: 'next' })
+  await ui.press({ plugin: 'socialchamp-calendar', key: 'open-s1' })
+  await ui.press({ plugin: 'socialchamp-calendar', key: 'plus-hour' })
+  await ui.press({ plugin: 'socialchamp-calendar', key: 'yes-s1' })
+
+  expect(sent.filter(s => s.endsWith(':update_post'))).toEqual(['socialchamp:update_post'])
+})
