@@ -1,0 +1,23 @@
+{
+  "name": "socialchamp-calendar",
+  "version": "0.3.0",
+  "description": "Social Champ calendar inside Claude Code: week, month and day views, failed-post watch, approvals",
+  "author": {
+    "name": "Social Champ"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "server": {
+      "type": "string",
+      "title": "Social Champ MCP server",
+      "description": "The Social Champ server's name as /mcp lists it",
+      "default": "SocialChamp"
+    },
+    "pollMinutes": {
+      "type": "number",
+      "title": "Watch interval (minutes)",
+      "description": "How often to check today's posts for failures; 0 turns the watch off",
+      "default": 5
+    }
+  }
+}

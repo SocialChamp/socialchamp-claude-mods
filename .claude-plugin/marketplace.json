@@ -1,0 +1,13 @@
+{
+  "name": "socialchamp-mods",
+  "description": "Social Champ tools for Claude Code: the calendar pane.",
+  "owner": {
+    "name": "Social Champ"
+  },
+  "plugins": [
+    {
+      "name": "socialchamp-calendar",
+      "source": "./"
+    }
+  ]
+}
