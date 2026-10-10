@@ -6,7 +6,7 @@ import {
   clip, isMovable, isPlaceable, loadRange, parseWhen, platform,
   charLimit, rangeFor, rangeLabel, slim, slimChannels, slimWorkspaces, snippet,
   timeOf, whenLabel, hasPassed, onDay, ymd,
-  writeProblem, errorClass, isHandOffSafe, fenced, socialChampTool, callArgs, chatVerdict, serverNames, isMissingServer, isUnreachableServer, CHAT_READS,
+  writeProblem, errorClass, isHandOffSafe, fenced, socialChampTool, callArgs, chatVerdict, isUnreachableServer,
   parseSummary, summaryByDay, parseDrafts, DRAFT_PAGE, parseTimetable, openSlots, parseShares, parseCollections, snapshotOf, changedSince, spanOf, FIRST_COMMENT_LIMIT, bulkFailures, checkStaged, briefOf, STAGE_LIMIT,
   generatedImageUrls, matchedEntries,
 } from './data'
@@ -103,11 +103,10 @@ async function set<K extends Key>($: EngineInterface, key: K, value: Ui[K]) {
 
 // Set from the manifest's userConfig each time the module registers.
 let server = 'SocialChamp'
-let configuredServer = 'SocialChamp'
-// Whether a call has reached Social Champ under `server`; until then a read told that no such server exists looks
-// for the connector under its other common names, once, for every call waiting on it.
-let serverFound = false
-let finding: Promise<string> | null = null
+// Loads retried in a row while the connector is not reachable (it may still be starting with the session).
+let loadRetries = 0
+const LOAD_RETRIES = 4
+const LOAD_RETRY_MS = 3_000
 let loadSeq = 0
 
 
@@ -163,65 +162,24 @@ async function reportUnfinished($: EngineInterface) {
 const resultText = (result: { content: { type: string; text?: string }[] }) =>
   result.content.find(b => b.type === 'text')?.text ?? ''
 
-/**
- * The call itself. A read that the engine answers with "no such server" while the connector has not been found
- * looks for it under its other names (see findServer) and is sent there. Any other failure is the call's own and is
- * never retried elsewhere, and writes are never retried at all: one that failed on the way might still have run.
- */
-async function reach($: EngineInterface, tool: string, args: Record<string, unknown>) {
-  const mayLook = !serverFound && CHAT_READS.has(tool)
-  try {
-    const result = await $.mcp.call(server, tool, args)
-    if (!(result.isError && isMissingServer(resultText(result)))) { serverFound = true; return result }
-    if (!mayLook) return result
-  } catch (error) {
-    if (!mayLook || !isMissingServer(String(error))) throw error
-  }
-  finding ??= findServer($)
-  server = await finding
-  serverFound = true
-  return $.mcp.call(server, tool, args)
-}
+/** The connector could not be reached at all: the message says what to do about it. */
+class UnreachableError extends Error {}
 
-/**
- * The connector's name when the configured one does not exist: the one other common name that answers a read. None,
- * or more than one (two connectors could be two accounts), is an error that says what to set; nothing is guessed.
- */
-async function findServer($: EngineInterface): Promise<string> {
-  const others = serverNames(configuredServer).slice(1)
-  const present = await Promise.all(others.map(async name => {
-    try {
-      const result = await $.mcp.call(name, 'get_workspaces', {})
-      return result.isError && isMissingServer(resultText(result)) ? null : name
-    } catch (error) {
-      return isMissingServer(String(error)) ? null : name
-    }
-  }))
-  const found = present.filter((name): name is string => name !== null)
-  if (found.length === 1) return found[0]!
-  finding = null
-  const configure = '/plugin configure socialchamp-calendar@socialchamp-mods'
-  throw new Error(found.length === 0
-    ? `No Social Champ connector named ${[configuredServer, ...others].join(', ')}. Add it, or set its name with ${configure}.`
-    : `Social Champ is connected under more than one name (${found.join(', ')}). Choose one with ${configure}.`)
-}
-
-/** A failure to reach the connector, with what to do about it. */
-const withConnectorHint = (text: string) => isUnreachableServer(text)
-  ? `Cannot reach Social Champ under "${server}" (${text.slice(0, 120)}). If your Social Champ connector has another ` +
-    'name in /mcp, set it with /plugin configure socialchamp-calendar@socialchamp-mods.'
-  : text
+const connectorError = (text: string) => isUnreachableServer(text)
+  ? new UnreachableError(`No Social Champ connector named "${clip(server, 40)}" is connected. If /mcp lists yours ` +
+    'under another name, set it with /plugin configure socialchamp-calendar@socialchamp-mods.')
+  : new Error(text)
 
 /** One MCP call, its JSON text block parsed; an error result throws its text. */
 async function sc<T>($: EngineInterface, tool: string, args: Record<string, unknown> = {}): Promise<T> {
-  let result: Awaited<ReturnType<typeof reach>>
+  let result: Awaited<ReturnType<EngineInterface['mcp']['call']>>
   try {
-    result = await reach($, tool, args)
+    result = await $.mcp.call(server, tool, args)
   } catch (error) {
-    throw new Error(withConnectorHint(String(error instanceof Error ? error.message : error)))
+    throw connectorError(String(error instanceof Error ? error.message : error))
   }
   const text = resultText(result)
-  if (result.isError) throw new Error(withConnectorHint(text.slice(0, 300) || `${tool} failed`))
+  if (result.isError) throw connectorError(text.slice(0, 300) || `${tool} failed`)
   try {
     return JSON.parse(text) as T
   } catch {
@@ -255,8 +213,10 @@ async function fetchPosts($: EngineInterface, from: string, to: string) {
 
 async function loadMeta($: EngineInterface, force = false) {
   if (!force && (await get($, 'channels')).length > 0) return
-  const cached = (await $.store.get('meta')) as { channels: Channel[]; workspaces: Workspace[]; at: number } | undefined
-  const isFresh = cached !== undefined && Date.now() - cached.at < 24 * 3600e3
+  const cached = (await $.store.get('meta')) as
+    { channels: Channel[]; workspaces: Workspace[]; at: number; server?: string } | undefined
+  // Names held for a day, and only for the connector they came from: another connector may be another account.
+  const isFresh = cached !== undefined && cached.server === server && Date.now() - cached.at < 24 * 3600e3
   if (!force && isFresh) {
     await patch($, { paused: ((await $.store.get('paused')) as string[] | undefined) ?? [] })
     await set($, 'channels', cached.channels)
@@ -267,7 +227,7 @@ async function loadMeta($: EngineInterface, force = false) {
     sc<{ items: Parameters<typeof slimChannels>[0] }>($, 'get_channels'),
     sc<{ items: Parameters<typeof slimWorkspaces>[0] }>($, 'get_workspaces'),
   ])
-  const meta = { channels: slimChannels(ch.items), workspaces: slimWorkspaces(ws.items), at: Date.now() }
+  const meta = { channels: slimChannels(ch.items), workspaces: slimWorkspaces(ws.items), at: Date.now(), server }
   const paused = ((await $.store.get('paused')) as string[] | undefined) ?? []
   await patch($, { paused })
   await set($, 'channels', meta.channels)
@@ -307,19 +267,29 @@ async function load($: EngineInterface, force = false) {
   await patch($, { isLoading: true, error: null })
   // Channel and workspace names only label the rows: posts still draw without them.
   await loadMeta($).catch(err => note($, 'meta', false, err instanceof Error ? err.message : String(err)))
+  let isRetrying = false
   try {
     const list = await fetchPosts($, from, to)
     await note($, 'load', true, `${v} ${from}..${to}: ${list.length} posts`)
+    loadRetries = 0
     if (seq !== loadSeq) return
     await patch($, { posts: list, loaded: { from, to, at: Date.now() } })
     void loadHolidays($, from, to)
   } catch (err) {
-    await note($, 'load', false, `${v} ${from}..${to}: ${err instanceof Error ? err.message : String(err)}`)
-    if (seq === loadSeq) await set($, 'error', reasonOf(err))
+    const message = err instanceof Error ? err.message : String(err)
+    await note($, 'load', false, `${v} ${from}..${to}: ${message}`)
+    // The connector may still be starting with the session (Claude Code says the same for a missing one): try
+    // again a few times before saying the range could not load.
+    if (seq === loadSeq && err instanceof UnreachableError && loadRetries < LOAD_RETRIES) {
+      loadRetries++
+      isRetrying = true
+      $.clock.after(LOAD_RETRY_MS, () => void load($, true))
+    } else if (seq === loadSeq) await set($, 'error', reasonOf(err))
   } finally {
     if (seq === loadSeq) {
       isLoadInFlight = false
-      await set($, 'isLoading', false)
+      // Still loading while a retry waits: an empty week would read as nothing scheduled.
+      if (!isRetrying) await set($, 'isLoading', false)
     }
   }
 }
@@ -1339,9 +1309,7 @@ export type Act = ReturnType<typeof makeAct>
 
 export const register: Register = (on, options) => {
   server = String(options.server ?? 'SocialChamp')
-  configuredServer = server
-  serverFound = false
-  finding = null
+  loadRetries = 0
   pollDefault = Number(options.pollMinutes ?? 5)
 
   // Claude's Social Champ calls from chat need a person's yes. A failure before the call refuses it; one after

@@ -118,68 +118,65 @@ test('a range spread over many small pages loads every post once', async ($, on)
   expect(await ui.find({ key: 'open-m139' })).toBeDefined()
 })
 
-test('the connector added as "socialchamp" is found by a read, and later calls use that name', async ($, on) => {
+test('a connector still starting is retried, so the pane does not open on an error', async ($, on) => {
   mock.store(on)
+  const clock = mock.clock(on, { now: Date.now() })
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
-  const tried: string[] = []
+  let isUp = false
   on('mcp.call', (_$, e) => {
-    tried.push(`${e.server}:${e.tool}`)
-    if (e.server !== 'socialchamp') return { value: { content: [{ type: 'text', text: 'MCP server not found' }], isError: true } }
+    if (!isUp) return { value: { content: [{ type: 'text', text: `$.mcp.call: no connected MCP tool "${e.tool}" on a server named "${e.server}"` }], isError: true } }
     const answers: Record<string, unknown> = {
       get_paginated_posts: { posts: POSTS, pagination: { page: 1, totalPages: 1 } },
       get_channels: { items: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }] },
       get_workspaces: { items: [{ id: 'w1', name: 'Social Champ', profilesCount: 1 }] },
     }
-    return { value: { content: [{ type: 'text', text: JSON.stringify(answers[e.tool] ?? {}) }], isError: false } }
+    return { value: { content: [{ type: 'text', text: JSON.stringify(answers[e.tool] ?? { items: [] }) }], isError: false } }
   })
-
   await $.command.run({ command: 'socialchamp-calendar', args: 'week', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
   const ui = await $.ui.mount({ plugin: 'socialchamp-calendar', surface: 'desktop', component: 'Pane', requestId: 'socialchamp-calendar', props: PANE })
+  expect(await ui.find({ text: /Couldn't load/ })).toBeUndefined()
+  isUp = true
+  await clock.advance(3_000)
   expect(await ui.find({ text: /Launch day is here/ })).toBeDefined()
-
-  const before = tried.length
-  await ui.press({ plugin: 'socialchamp-calendar', key: 'refresh' })
-  expect(await ui.find({ text: /Launch day is here/ })).toBeDefined()
-  const after = tried.slice(before)
-  expect(after.length).toBeGreaterThan(0)
-  expect(after.every(t => t.startsWith('socialchamp:'))).toBe(true)
+  expect(await ui.find({ text: /Couldn't load/ })).toBeUndefined()
 })
 
-type Body = Extract<Parameters<typeof test>[1], (...args: never[]) => unknown>
-const mountWith = async ($: Parameters<Body>[0], on: Parameters<Body>[1],
-  answer: (server: string, tool: string) => unknown) /* a string is an error result */ => {
+test('a connector that never answers says how to set its name', async ($, on) => {
   mock.store(on)
+  const clock = mock.clock(on, { now: Date.now() })
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
-  const tried: string[] = []
+  on('mcp.call', (_$, e) => ({ value: { content: [{ type: 'text', text: `$.mcp.call: no connected MCP tool "${e.tool}" on a server named "${e.server}"` }], isError: true } }))
+  await $.command.run({ command: 'socialchamp-calendar', args: 'week', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
+  const ui = await $.ui.mount({ plugin: 'socialchamp-calendar', surface: 'desktop', component: 'Pane', requestId: 'socialchamp-calendar', props: PANE })
+  for (let i = 0; i < 5; i++) await clock.advance(3_000)
+  expect(await ui.find({ text: /Couldn't load/ })).toBeDefined()
+  expect(await ui.find({ text: /plugin configure socialchamp-calendar@socialchamp-mods/ })).toBeDefined()
+})
+
+test('names cached from another connector are not shown: they may be another account', async ($, on) => {
+  mock.store(on, {
+    storeVersion: 2,
+    meta: { channels: [{ id: 'x1', name: 'Cached Elsewhere', type: 'FB_PAGE', workspaceId: 'wx' }], workspaces: [{ id: 'wx', name: 'Other Account' }], at: Date.now(), server: 'demo' },
+  })
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  const calls: string[] = []
   on('mcp.call', (_$, e) => {
-    tried.push(`${e.server}:${e.tool}`)
-    const value = answer(e.server, e.tool)
-    if (typeof value === 'string') return { value: { content: [{ type: 'text', text: value }], isError: true } }
-    return { value: { content: [{ type: 'text', text: JSON.stringify(value) }], isError: false } }
+    calls.push(e.tool)
+    const answers: Record<string, unknown> = {
+      get_paginated_posts: { posts: POSTS, pagination: { page: 1, totalPages: 1 } },
+      get_channels: { items: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }] },
+      get_workspaces: { items: [{ id: 'w1', name: 'Social Champ', profilesCount: 1 }] },
+    }
+    return { value: { content: [{ type: 'text', text: JSON.stringify(answers[e.tool] ?? { items: [] }) }], isError: false } }
   })
   await $.command.run({ command: 'socialchamp-calendar', args: 'week', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
   const ui = await $.ui.mount({ plugin: 'socialchamp-calendar', surface: 'desktop', component: 'Pane', requestId: 'socialchamp-calendar', props: PANE })
-  return { ui, tried }
-}
-
-test('two connectors under other names: nothing is guessed, the pane says to choose', async ($, on) => {
-  const { ui, tried } = await mountWith($, on, server => {
-    if (server === 'SocialChamp' || server === 'social-champ') return 'MCP server not found'
-    return { items: [], posts: [] }
-  })
-  expect(await ui.find({ text: /more than one name/ })).toBeDefined()
-  expect(tried.some(t => t.startsWith('socialchamp:get_paginated') || t.startsWith('Social Champ:get_paginated'))).toBe(false)
-})
-
-test('a read that times out under the configured name is not sent to another connector', async ($, on) => {
-  const { tried } = await mountWith($, on, server => {
-    if (server === 'SocialChamp') return 'Request timed out'
-    return { items: [], posts: [] }
-  })
-  expect(tried.length).toBeGreaterThan(0)
-  expect(tried.every(t => t.startsWith('SocialChamp:'))).toBe(true)
+  expect(calls).toContain('get_channels')
+  expect(await ui.find({ text: /Other Account|Cached Elsewhere/ })).toBeUndefined()
 })

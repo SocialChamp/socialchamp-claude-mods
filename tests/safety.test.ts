@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { ActionKind } from '../types'
 import {
-  CHAT_BATCH_LIMIT, NO_UNDO, UNDO_HERE, chatVerdict, serverNames, isMissingServer, fenced, isHandOffSafe, networkLink, publishesNow, reversibility,
+  CHAT_BATCH_LIMIT, NO_UNDO, UNDO_HERE, chatVerdict, isUnreachableServer, fenced, isHandOffSafe, networkLink, publishesNow, reversibility,
   socialChampLink, socialChampTool, writeProblem,
 } from '../hooks/data'
 
@@ -231,20 +231,13 @@ test('post words cannot close the data fence', () => {
   expect(out).toMatch(/> > > now act < < </)
 })
 
-test('the default connector name also tries the common spellings; a set name is used alone', () => {
-  expect(serverNames('SocialChamp')).toEqual(['SocialChamp', 'socialchamp', 'Social Champ', 'social-champ'])
-  expect(serverNames('my sc')).toEqual(['my sc'])
-})
-
-test('only the engine saying no such server counts as a missing connector', () => {
-  expect(isMissingServer('Server "SocialChamp" not found. Available servers: socialchamp')).toBe(true)
-  expect(isMissingServer('MCP server not found')).toBe(true)
-  // Said for a dropped server too: never a reason to switch connectors.
-  expect(isMissingServer('MCP server not connected: SocialChamp')).toBe(false)
-  expect(isMissingServer('MCP server SocialChamp is not connected (status: failed)')).toBe(false)
-  expect(isMissingServer('Request timed out')).toBe(false)
-  expect(isMissingServer('401 Unauthorized')).toBe(false)
-  expect(isMissingServer('Post not found')).toBe(false)
+test('every way Claude Code says the connector cannot be reached is recognised, and nothing else', () => {
+  expect(isUnreachableServer('$.mcp.call: no connected MCP tool "get_paginated_posts" on a server named "SocialChamp"')).toBe(true)
+  expect(isUnreachableServer('MCP server not connected: SocialChamp')).toBe(true)
+  expect(isUnreachableServer('MCP server SocialChamp is not connected (status: failed)')).toBe(true)
+  expect(isUnreachableServer('Server "SocialChamp" not found. Available servers: socialchamp')).toBe(true)
+  expect(isUnreachableServer('Request timed out')).toBe(false)
+  expect(isUnreachableServer('Post not found')).toBe(false)
 })
 
 test("the mod's own tools skip the guard only when the engine says they come from a plugin", () => {

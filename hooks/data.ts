@@ -530,24 +530,13 @@ const squashed = (name: string) => name.replace(/[^A-Za-z0-9]/g, '').toLowerCase
  * "socialchamp" once punctuation is dropped: an unusual name errs toward asking, not toward passing.
  */
 /**
- * The names to try for the connector. A name set in the plugin's options is used alone; the default also tries the
- * names its README and Claude's connector settings add it under.
+ * Whether a failure is about reaching the connector at all, so the pane can say how to point it elsewhere. Claude
+ * Code words it the same for a connector that does not exist, one still starting and one that dropped
+ * ('no connected MCP tool "<tool>" on a server named "<name>"'), so nothing here decides which.
  */
-export const serverNames = (configured: string) =>
-  configured === 'SocialChamp' ? ['SocialChamp', 'socialchamp', 'Social Champ', 'social-champ'] : [configured]
-
-/**
- * Whether a failure is the engine saying no server goes by that name at all ('Server "<name>" not found',
- * "MCP server not found"). Only this sends a read to look for the connector under another name. "MCP server not
- * connected: <name>" is not enough: the engine says it both for an unknown name and for a configured server that
- * has dropped, and falling back from a dropped one could reach another account.
- */
-export const isMissingServer = (text: string) =>
-  /\bServer "[^"]{1,80}" not found\b|\bMCP server not found\b|\b(no|unknown) MCP server\b/i.test(text)
-
-/** Whether a failure is about reaching the connector at all, so the pane can say how to point it elsewhere. */
 export const isUnreachableServer = (text: string) =>
-  isMissingServer(text) || /\bMCP server not connected\b|\bMCP server .{1,80}? is not connected\b/i.test(text)
+  /no connected MCP tool .{1,120}? on a server named|\bMCP server not (found|connected)\b|\bMCP server .{1,80}? is not connected\b|\bServer "[^"]{1,80}" not found\b/i
+    .test(text)
 
 /** The prefix of the tools this mod registers itself (mcp__<plugin>__<tool>). */
 export const OWN_TOOLS = 'socialchamp-calendar'

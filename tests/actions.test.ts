@@ -214,7 +214,7 @@ test('moving to the next week reads its posts once', async ($, on) => {
   expect(fake.calls.filter(c => c.tool === 'get_paginated_posts').length - before).toBe(1)
 })
 
-test('a write whose connector disappears is sent once and never to another name', async ($, on) => {
+test('a write whose connector drops is sent once, never retried', async ($, on) => {
   const sent: string[] = []
   mock.store(on)
   mock.clock(on, { now: Date.now() })
@@ -223,9 +223,10 @@ test('a write whose connector disappears is sent once and never to another name'
   on('ui.toast', () => ({ value: undefined }))
   on('mcp.call', (_$, e) => {
     sent.push(`${e.server}:${e.tool}`)
-    const missing = { value: { content: [{ type: 'text', text: 'MCP server not found' }], isError: true } }
-    // The connector exists only as "socialchamp", and drops out just as the write goes.
-    if (e.server !== 'socialchamp' || e.tool === 'update_post') return missing
+    // The connector drops out just as the write goes.
+    if (e.tool === 'update_post') {
+      return { value: { content: [{ type: 'text', text: `$.mcp.call: no connected MCP tool "update_post" on a server named "${e.server}"` }], isError: true } }
+    }
     const answers: Record<string, unknown> = {
       get_paginated_posts: { posts: POSTS, pagination: { page: 1, totalPages: 1 } },
       get_channels: { items: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }] },
@@ -241,5 +242,5 @@ test('a write whose connector disappears is sent once and never to another name'
   await ui.press({ plugin: 'socialchamp-calendar', key: 'plus-hour' })
   await ui.press({ plugin: 'socialchamp-calendar', key: 'yes-s1' })
 
-  expect(sent.filter(s => s.endsWith(':update_post'))).toEqual(['socialchamp:update_post'])
+  expect(sent.filter(s => s.endsWith(':update_post'))).toEqual(['SocialChamp:update_post'])
 })
