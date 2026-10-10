@@ -237,11 +237,17 @@ test('the default connector name also tries the common spellings; a set name is 
 })
 
 test('only the engine saying no such server counts as a missing connector', () => {
+  expect(isMissingServer('Server "SocialChamp" not found. Available servers: socialchamp')).toBe(true)
   expect(isMissingServer('MCP server not found')).toBe(true)
-  expect(isMissingServer('MCP server not connected: SocialChamp')).toBe(true)
-  expect(isMissingServer('MCP server SocialChamp is not connected')).toBe(true)
+  // Said for a dropped server too: never a reason to switch connectors.
+  expect(isMissingServer('MCP server not connected: SocialChamp')).toBe(false)
   expect(isMissingServer('MCP server SocialChamp is not connected (status: failed)')).toBe(false)
   expect(isMissingServer('Request timed out')).toBe(false)
   expect(isMissingServer('401 Unauthorized')).toBe(false)
   expect(isMissingServer('Post not found')).toBe(false)
+})
+
+test("the mod's own tools skip the guard only when the engine says they come from a plugin", () => {
+  expect(socialChampTool('mcp__socialchamp-calendar__stage_posts', 'SocialChamp', 'socialchamp-calendar', 'plugin')).toBeNull()
+  expect(socialChampTool('mcp__socialchamp-calendar__update_post', 'SocialChamp', 'socialchamp-calendar', 'user')).toBe('update_post')
 })

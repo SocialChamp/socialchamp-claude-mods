@@ -6,7 +6,7 @@ import {
   clip, isMovable, isPlaceable, loadRange, parseWhen, platform,
   charLimit, rangeFor, rangeLabel, slim, slimChannels, slimWorkspaces, snippet,
   timeOf, whenLabel, hasPassed, onDay, ymd,
-  writeProblem, errorClass, isHandOffSafe, fenced, socialChampTool, callArgs, chatVerdict, serverNames, isMissingServer, CHAT_READS,
+  writeProblem, errorClass, isHandOffSafe, fenced, socialChampTool, callArgs, chatVerdict, serverNames, isMissingServer, isUnreachableServer, CHAT_READS,
   parseSummary, summaryByDay, parseDrafts, DRAFT_PAGE, parseTimetable, openSlots, parseShares, parseCollections, snapshotOf, changedSince, spanOf, FIRST_COMMENT_LIMIT, bulkFailures, checkStaged, briefOf, STAGE_LIMIT,
   generatedImageUrls, matchedEntries,
 } from './data'
@@ -206,11 +206,22 @@ async function findServer($: EngineInterface): Promise<string> {
     : `Social Champ is connected under more than one name (${found.join(', ')}). Choose one with ${configure}.`)
 }
 
+/** A failure to reach the connector, with what to do about it. */
+const withConnectorHint = (text: string) => isUnreachableServer(text)
+  ? `Cannot reach Social Champ under "${server}" (${text.slice(0, 120)}). If your Social Champ connector has another ` +
+    'name in /mcp, set it with /plugin configure socialchamp-calendar@socialchamp-mods.'
+  : text
+
 /** One MCP call, its JSON text block parsed; an error result throws its text. */
 async function sc<T>($: EngineInterface, tool: string, args: Record<string, unknown> = {}): Promise<T> {
-  const result = await reach($, tool, args)
+  let result: Awaited<ReturnType<typeof reach>>
+  try {
+    result = await reach($, tool, args)
+  } catch (error) {
+    throw new Error(withConnectorHint(String(error instanceof Error ? error.message : error)))
+  }
   const text = resultText(result)
-  if (result.isError) throw new Error(text.slice(0, 300) || `${tool} failed`)
+  if (result.isError) throw new Error(withConnectorHint(text.slice(0, 300) || `${tool} failed`))
   try {
     return JSON.parse(text) as T
   } catch {
@@ -1257,8 +1268,9 @@ const labelsFailed = new Set<string>()
  * The pane's own calls go through `$.mcp.call`, which never reaches this hook: they have their own Yes bar.
  */
 async function guardChatCall($: EngineInterface, e: Record<string, unknown>, next: (e: never) => Promise<unknown>) {
-  const provenance = e.mcp_server as { name?: unknown } | undefined
-  const name = socialChampTool(String(e.tool), server, typeof provenance?.name === 'string' ? provenance.name : undefined)
+  const provenance = e.mcp_server as { name?: unknown; source?: unknown } | undefined
+  const name = socialChampTool(String(e.tool), server, typeof provenance?.name === 'string' ? provenance.name : undefined,
+    typeof provenance?.source === 'string' ? provenance.source : undefined)
   if (name === null) return next(e as never)
   const verdict = chatVerdict(name, callArgs(e), Date.now())
   if (verdict.kind === 'pass') return next(e as never)

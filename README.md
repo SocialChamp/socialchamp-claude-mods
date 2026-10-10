@@ -6,25 +6,30 @@ Yes; every change Claude makes from chat asks you in Claude Code's own question 
 
 ## Install
 
-You need Claude Code with mods (plugins with hooks; built and tested on 2.1.293) and the
-[Social Champ MCP connector](https://github.com/SocialChamp/socialchamp-mcp) connected. The mod uses the connector
-named `SocialChamp`; if there is none, it uses whichever one of `socialchamp`, `Social Champ` or `social-champ` exists.
-If none does, or more than one does (two connectors may be two accounts, so the mod will not guess), set the one to
-use in Claude Code with `/plugin configure socialchamp-calendar@socialchamp-mods`.
+You need Claude Code 2.1.293 or later (`claude --version`; `claude update` to upgrade), which runs mods (plugins
+with hooks), and the [Social Champ MCP connector](https://github.com/SocialChamp/socialchamp-mcp) connected.
+
+The mod uses the connector named `SocialChamp`. When Claude Code says no server by that name exists, it looks for
+`socialchamp`, `Social Champ` and `social-champ`, and uses the one that exists; if none does, or more than one does
+(two connectors may be two accounts), it does not guess. It never switches away from a `SocialChamp` connector that
+exists but has dropped. If the pane says it cannot reach Social Champ, set your connector's name (as `/mcp` lists it)
+in Claude Code with `/plugin configure socialchamp-calendar@socialchamp-mods`.
 
 ```bash
 claude plugin marketplace add SocialChamp/socialchamp-claude-mods
 claude plugin install socialchamp-calendar@socialchamp-mods
 ```
 
-Then run `/reload-plugins` and open the pane with `/socialchamp-calendar`. If you use auto mode, add the permission
-rules below first.
+Then run `/reload-plugins` and open the pane with `/socialchamp-calendar`. If you use auto mode, the pane's calls
+are refused until you add the permission rules below. Add them only after the pane has opened: the rules turn off
+Claude Code's own prompt for these tools, and the mod's guard is what asks you instead. If you uninstall the mod,
+remove the rules too.
 
 To update: `claude plugin marketplace update socialchamp-mods`, then `claude plugin update socialchamp-calendar@socialchamp-mods`
 and `/reload-plugins`.
 
 Some connector tools answer only for a workspace's owner (the month summary, drafts, queue slots, calendar events),
-so team members see the pane without those parts; approving and rejecting need the manage-team permission.
+so team members see the pane without those parts; approving, rejecting and approval reminders need the `manage_team` scope.
 
 ## What it does
 
@@ -63,13 +68,14 @@ In auto mode the pane's own calls were refused until the tools had `permissions.
 `~/.claude/settings.json`. These rules also let Claude call the tools from chat without Claude Code's own
 prompt; the guard above still asks you for every write. The mod never edits settings. Each rule is
 `mcp__<connector>__<tool>`, where `<connector>` is the name `/mcp` lists with spaces as underscores: `mcp__SocialChamp__update_post`,
-`mcp__socialchamp__update_post` or `mcp__Social_Champ__update_post`. In `~/.claude/settings.json`:
+`mcp__socialchamp__update_post` or `mcp__Social_Champ__update_post`. Add them to the `permissions.allow` list in
+`~/.claude/settings.json`, keeping what is already there:
 
 ```json
-{ "permissions": { "allow": ["mcp__socialchamp__get_paginated_posts", "mcp__socialchamp__update_post"] } }
+{ "permissions": { "allow": ["...your existing rules...", "mcp__socialchamp__get_paginated_posts", "mcp__socialchamp__update_post"] } }
 ```
 
-The tools:
+The tools (the approval reminder uses `approval_assign`):
 
 - Reads: `get_paginated_posts`, `get_channels`, `get_workspaces`, `approval_list_pending`, `label_list`,
   `get_shareable_calendars`, `get_calendar_events`, `get_calendar_summary`, `get_drafts`, `get_queue_slots`,

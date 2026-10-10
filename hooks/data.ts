@@ -537,24 +537,28 @@ export const serverNames = (configured: string) =>
   configured === 'SocialChamp' ? ['SocialChamp', 'socialchamp', 'Social Champ', 'social-champ'] : [configured]
 
 /**
- * Whether a failure is the engine saying no server goes by that name ("MCP server not found", "MCP server not
- * connected: <name>", "MCP server <name> is not connected"), as opposed to the tool failing. A server that exists
- * but failed ("... is not connected (status: failed)") is not missing: falling back from it could reach another
- * account. Only a missing server sends a read to look for the connector under another name.
+ * Whether a failure is the engine saying no server goes by that name at all ('Server "<name>" not found',
+ * "MCP server not found"). Only this sends a read to look for the connector under another name. "MCP server not
+ * connected: <name>" is not enough: the engine says it both for an unknown name and for a configured server that
+ * has dropped, and falling back from a dropped one could reach another account.
  */
 export const isMissingServer = (text: string) =>
-  /\bMCP server not found\b|\bMCP server not connected:|\bMCP server .{1,80}? is not connected(?! \(status)|\b(no|unknown) MCP server\b/i
-    .test(text)
+  /\bServer "[^"]{1,80}" not found\b|\bMCP server not found\b|\b(no|unknown) MCP server\b/i.test(text)
+
+/** Whether a failure is about reaching the connector at all, so the pane can say how to point it elsewhere. */
+export const isUnreachableServer = (text: string) =>
+  isMissingServer(text) || /\bMCP server not connected\b|\bMCP server .{1,80}? is not connected\b/i.test(text)
 
 /** The prefix of the tools this mod registers itself (mcp__<plugin>__<tool>). */
 export const OWN_TOOLS = 'socialchamp-calendar'
 
-export const socialChampTool = (tool: string, configured: string, serverName?: string): string | null => {
+export const socialChampTool = (tool: string, configured: string, serverName?: string, source?: string): string | null => {
   const match = /^mcp__(.+?)__(.+)$/.exec(tool)
   if (!match) return null
   const [, prefix, name] = match as unknown as [string, string, string]
-  // The mod's own tools have "socialchamp" in their name but never touch Social Champ.
-  if (prefix === OWN_TOOLS) return null
+  // The mod's own tools have "socialchamp" in their name but never touch Social Champ. Trust the engine's word on
+  // where a tool comes from: a configured server that happened to use this name is still checked.
+  if (prefix === OWN_TOOLS && (source === undefined || source === 'plugin')) return null
   const known = [configured, 'SocialChamp', 'Social Champ'].map(canonical)
   const isSocialChamp = known.includes(prefix.toLowerCase()) || squashed(prefix).includes('socialchamp')
     || (serverName !== undefined && (known.includes(canonical(serverName)) || squashed(serverName).includes('socialchamp')))
