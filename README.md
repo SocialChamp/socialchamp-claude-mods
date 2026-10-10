@@ -283,7 +283,7 @@ undo, the pane re-reads the post and stops if someone changed it in Social Champ
 | Claude tries to… | What happens |
 |---|---|
 | Read posts, channels, drafts, labels | Allowed. |
-| Change something (schedule, edit, label, pause…) | You are asked in Claude Code's question dialog, with every argument shown (long values shortened; post words in full, or the call is refused), **PUBLISHES NOW** when it would go out at once, and a warning when the time asked for has already passed. Dismissing the question refuses it. |
+| Change something (schedule, edit, label, pause…) | You are asked in Claude Code's question dialog, with every argument shown (long values shortened; post words in full, or the call is refused), **PUBLISHES NOW** when it would go out at once (a new post with no time, or with a time already past), and a warning when it asks to move a post to a time already past (Social Champ refuses those). Dismissing the question refuses it. |
 | Delete posts | Refused. Delete in the pane (it asks you) or in Social Champ. |
 | Send more than 10 posts in one batch (bulk schedule, bulk label, queue reorder, bulk delete) | Refused. Claude stages them in the pane instead, where you tick and confirm. |
 | Read post metrics or best times | Refused. Facebook does not allow passing metrics to a third party. |

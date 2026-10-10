@@ -20,7 +20,7 @@ test('the publish-now check refuses every shape that would go out at once or con
   expect(create({ isScheduled: false, dateTime: LATER })).toMatch(/publish the post now/)
   expect(create({ isScheduled: 'true', dateTime: LATER })).toMatch(/true or false/)
   expect(create({ isScheduled: true, saveAsDraft: true, dateTime: LATER })).toMatch(/draft and scheduled/)
-  expect(create({ isScheduled: true, dateTime: PAST })).toMatch(/minute from now/)
+  expect(create({ isScheduled: true, dateTime: PAST })).toMatch(/would publish the post now/)
   expect(writeProblem('create_image_post', { imageUrls: ['x'] }, NOW)).toMatch(/publish/)
 
   const bulk = (posts: unknown[]) => writeProblem('bulk_schedule', { posts }, NOW)
@@ -41,7 +41,10 @@ test('the publish-now check refuses every shape that would go out at once or con
   expect(writeProblem('update_post', { items: [{ postId: 'p', dateTime: LATER }] }, NOW)).toBeNull()
   expect(writeProblem('update_post', { items: [{ postId: 'p', dateTime: PAST }] }, NOW)).toMatch(/passed/)
   expect(publishesNow('create_text_post', { text: 'x' }, NOW)).toBe(true)
-  expect(publishesNow('create_text_post', { isScheduled: true, dateTime: PAST }, NOW)).toBe(false)
+  // A new post scheduled in the past is sent at once; moving a post into the past is refused by Social Champ.
+  expect(publishesNow('create_text_post', { isScheduled: true, dateTime: PAST }, NOW)).toBe(true)
+  expect(publishesNow('bulk_schedule', { posts: [{ text: 'x', channelIds: ['c'], isScheduled: true, dateTime: PAST }] }, NOW)).toBe(true)
+  expect(publishesNow('update_post', { postId: 'p', dateTime: PAST }, NOW)).toBe(false)
 })
 
 test('every kind of change says whether and where it can be undone', () => {

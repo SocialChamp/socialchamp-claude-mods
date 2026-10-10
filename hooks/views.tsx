@@ -679,7 +679,7 @@ export function drawPane(input: PaneInput): RenderElement {
           </Box>
         </Box>
       </Box>
-      <Box flexDirection="row" gap={1}>
+      <Box flexDirection="row" gap={1} flexWrap="wrap">
         {/* Issues last: its count arrives after the first draw, and a tab shifted right by it can leave a sliver of
             its old emoji behind in a terminal. */}
         {(['week', 'month', 'day', 'drafts', 'issues'] as const).map(name => (
@@ -1098,10 +1098,11 @@ export function drawPane(input: PaneInput): RenderElement {
         ? <Text color="warning">{drafts.error}</Text>
         : (
           <Box flexDirection="column" gap={1}>
+            <Text bold>{plural(drafts.items.length, 'draft')}{drafts.hasMore ? '+' : ''}</Text>
+            {/* The filter on its own line, labelled: beside the count it read as part of the heading. */}
             <Box flexDirection="row" gap={1} alignItems="center" flexWrap="wrap">
-              <Text bold>{plural(drafts.items.length, 'draft')}{drafts.hasMore ? '+' : ''}</Text>
               {Input !== null && (
-                <Input key="draft-filter" placeholder="Filter drafts" submitLabel="Filter"
+                <Input key="draft-filter" label="Filter" placeholder="words in a draft" submitLabel="Filter"
                   onSubmit={(value: string) => void act.patch({ draftFilter: value.trim() })} />
               )}
               {ui.draftFilter !== '' && <Button key="clear-draft-filter" plain label="✕ Clear" onPress={() => void act.patch({ draftFilter: '' })} />}
@@ -1190,19 +1191,23 @@ export function drawPane(input: PaneInput): RenderElement {
               if (d === null) return <Box key={`e-${i}-${j}`} width={column} />
               const c = monthCounts !== null ? (monthCounts.get(d) ?? ZERO) : counts(grouped.get(d) ?? [])
               const isWide = cell >= 10
+              // A terminal cell holds its width less the border and padding; the long label only where it fits,
+              // so "2 posts" never breaks over two lines beside a "1 post" that does not.
+              const room = e.surface === 'desktop' ? Infinity : cell - (isWide ? 4 : 2)
+              const fit = (long: string, short: string) => (isWide && long.length <= room ? long : short)
               return (
                 <Box key={`d-${d}`} width={column} flexDirection="column" borderStyle="round"
                   {...(isToday(d) ? { borderColor: BRAND } : { borderDimColor: true })}
                   hover={{ borderColor: BRAND }} paddingX={isWide ? 1 : 0}>
                   <Button key={`m-${d}`} plain label={String(Number(d.slice(8)))}
                     hover={{ color: BRAND, bold: true }} onPress={() => void act.go({ view: 'day', anchor: d })} />
-                  <Box flexDirection="column" paddingLeft={1}>
+                  <Box flexDirection="column">
                     {c.total === 0
                       ? <Text dimColor>·</Text>
                       : <Text color={c.scheduled > 0 ? 'suggestion' : undefined} dimColor={c.scheduled === 0}>
-                          {isWide ? plural(c.total, 'post') : String(c.total)}
+                          {fit(plural(c.total, 'post'), String(c.total))}
                         </Text>}
-                    {c.failed > 0 && <Text color="error">✕ {c.failed}{isWide ? ' failed' : ''}</Text>}
+                    {c.failed > 0 && <Text color="error">{fit(`✕ ${c.failed} failed`, `✕ ${c.failed}`)}</Text>}
                     {holidaysOn(d).map(holiday => (
                       <Box key={`mhol-${d}-${holiday.name}`}>
                         <Text color={BRAND} wrap="truncate-end">{isWide ? `🎉 ${holiday.name}` : '🎉'}</Text>

@@ -381,7 +381,8 @@ export const writeProblem = (tool: string, args: Record<string, unknown>, now: n
     if (draft === true && scheduled === true) return 'A post cannot be a draft and scheduled at once'
     if (draft === true) return null
     if (scheduled !== true) return 'This would publish the post now'
-    return isFuture(args.dateTime, now) ? null : 'The time must be at least a minute from now'
+    // Social Champ accepts a new post scheduled in the past and its job runs at once: it publishes now.
+    return isFuture(args.dateTime, now) ? null : 'A time already past would publish the post now'
   }
   if (tool === 'bulk_schedule') {
     const posts = Array.isArray(args.posts) ? args.posts as Array<Record<string, unknown>> : []
@@ -391,7 +392,7 @@ export const writeProblem = (tool: string, args: Record<string, unknown>, now: n
       if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return 'A post in the batch is not valid'
       if ('saveAsDraft' in entry) return 'Batch scheduling cannot save drafts'
       if (entry.isScheduled !== true) return 'A post in the batch would publish now'
-      if (!isFuture(entry.dateTime, now)) return 'A time in the batch has passed'
+      if (!isFuture(entry.dateTime, now)) return 'A time in the batch has passed, so that post would publish now'
     }
     return null
   }
@@ -407,6 +408,7 @@ export const writeProblem = (tool: string, args: Record<string, unknown>, now: n
       ? null : 'A time in the batch has passed, or an entry is not valid'
   }
   if (tool === 'update_post' && args.dateTime !== undefined) {
+    // Social Champ refuses to move a post to a past time ("Not a valid date"): a warning, not a publish.
     return isFuture(args.dateTime, now) ? null : 'The time must be at least a minute from now'
   }
   if (tool === 'queue_reorder') {
