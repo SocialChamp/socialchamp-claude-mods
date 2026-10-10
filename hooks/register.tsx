@@ -1372,7 +1372,7 @@ export const register: Register = (on, options) => {
     for (const tool of PANE_TOOLS) await $.tool.register(tool).catch(err => note($, 'tools', false, String(err)))
     await $.command.register({
       name: 'socialchamp-calendar',
-      description: 'Open the Social Champ calendar pane (week, month, day or issues)',
+      description: 'Open the Social Champ calendar pane (week, month, day, drafts or issues)',
       argumentHint: '[week|month|day|issues|drafts|refresh]',
     })
     void startPolling($, true)

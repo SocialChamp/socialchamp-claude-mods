@@ -94,7 +94,7 @@ test('the month counts from one summary call, and opening a day loads that day\'
   expect(await ui.find({ text: /6 posts this month/ })).toBeDefined()
   expect(await ui.find({ text: /2 failed/ })).toBeDefined()
   // The Issues badge reads the Issues-interval summary: exact, no "+".
-  expect(await ui.find({ text: /Issues · 2$/ })).toBeDefined()
+  expect(await ui.find({ text: /Issues \(2\)$/ })).toBeDefined()
   await ui.press({ plugin: 'socialchamp-calendar', key: `m-${today}` })
   await fake.clock.advance(10)
   expect(fake.calls.some(c => c.tool === 'get_paginated_posts')).toBe(true)

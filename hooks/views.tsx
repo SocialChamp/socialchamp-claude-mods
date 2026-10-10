@@ -15,7 +15,7 @@ import type { Act } from './register'
 // It never holds `$`: every effect goes through `act`, bound in register.tsx to that dispatch's `$`.
 
 export const CALENDAR_URL = 'https://app.socialchamp.com/calendar'
-export const TAB_LABELS = { week: '📆 Week', month: '🗓️ Month', day: '☀️ Day', issues: '🚩 Issues', drafts: '📝 Drafts' } as const
+export const TAB_LABELS = { week: '📆 Week', month: '📅 Month', day: '🌞 Day', issues: '🚩 Issues', drafts: '📝 Drafts' } as const
 export const STATUS_WORDS = { scheduled: 'Scheduled', posted: 'Published', failed: 'Failed', pending: 'Waiting for approval' } as const
 export const BRAND = '#F7752A'
 export const STATUS_CHIP = { scheduled: '#2563EB', posted: '#16A34A', failed: '#DC2626', pending: '#D97706' } as const
@@ -59,7 +59,8 @@ export function drawPane(input: PaneInput): RenderElement {
   const holidaysOn = (d: string) => ui.holidays.filter(holiday => holiday.day === d)
 
   const statusColor = (p: Post) =>
-    p.status === 'failed' ? 'error' : p.status === 'pending' ? 'warning' : p.status === 'posted' ? 'subtle' : 'suggestion'
+    // Posted in the plain text colour: the theme's "subtle" all but disappears on a dark terminal.
+    p.status === 'failed' ? 'error' : p.status === 'pending' ? 'warning' : p.status === 'posted' ? undefined : 'suggestion'
   const statusMark = (p: Post) =>
     p.status === 'failed' ? '✕' : p.status === 'pending' ? '◷' : p.status === 'posted' ? '✓' : '•'
 
@@ -69,9 +70,12 @@ export function drawPane(input: PaneInput): RenderElement {
   )
   const row = (p: Post, withDate = false) => {
     const when = withDate ? `${dayLabel(dayOf(p.dateTime))}, ${timeOf(p.dateTime)}` : timeOf(p.dateTime)
-    const timeWidth = withDate ? 19 : 9
-    // The desktop font is proportional and runs narrower than a cell, so the text gets a fifth more room.
-    const textWidth = Math.max(16, Math.floor((width - timeWidth - nameWidth - 9) * 1.2))
+    // "Sun 11 Oct, 11:00 AM" is 20 characters.
+    const timeWidth = withDate ? 20 : 9
+    // The desktop font is proportional and runs narrower than a cell, so there the text gets a fifth more room. A
+    // terminal draws every character a full cell: a longer text there squeezes the time and badge onto two lines.
+    const room = width - timeWidth - nameWidth - 14
+    const textWidth = Math.max(8, e.surface === 'desktop' ? Math.floor(room * 1.2) : room)
     return (
       <Box key={`row-${p.id}`} flexDirection="row" gap={1} alignItems="center">
         {ui.isSelecting && (v === 'day' || v === 'issues') && (() => {
@@ -84,10 +88,10 @@ export function drawPane(input: PaneInput): RenderElement {
               onPress={() => void act.patch({ selection: isPicked ? ui.selection.filter(id => id !== p.id) : [...ui.selection, p.id] })} />
             : <Box width={1}><Text dimColor>·</Text></Box>
         })()}
-        <Box width={2}><Text color={statusColor(p)} bold>{statusMark(p)}</Text></Box>
-        <Box width={timeWidth}><Text dimColor>{when}</Text></Box>
-        <Box width={5}>{pill(p.socialType)}</Box>
-        <Box width={nameWidth}>
+        <Box width={2} flexShrink={0}><Text color={statusColor(p)} bold>{statusMark(p)}</Text></Box>
+        <Box width={timeWidth} flexShrink={0}><Text dimColor wrap="truncate-end">{when}</Text></Box>
+        <Box width={5} flexShrink={0}>{pill(p.socialType)}</Box>
+        <Box width={nameWidth} flexShrink={0}>
           <Text dimColor wrap="truncate-end">{`${isPaused(p.channelId) ? '⏸ ' : ''}${nameOf(p)}`}</Text>
         </Box>
         <Button key={`open-${p.id}`} plain label={`${clip(snippet(p.text), textWidth)} ›`}
@@ -102,7 +106,7 @@ export function drawPane(input: PaneInput): RenderElement {
   const confirmBar = (scope: string) =>
     pendingConfirm !== null && pendingConfirm.scope === scope && (
       <Box key={`confirm-${scope}`} flexDirection="column" borderStyle="round" borderColor="warning" paddingX={1}>
-        <Text color="warning" wrap="wrap">⚠️  {pendingConfirm.summary}</Text>
+        <Text color="warning" wrap="wrap">❗ {pendingConfirm.summary}</Text>
         <Text dimColor wrap="wrap">{reversibility(pendingConfirm.kind)}</Text>
         <Box flexDirection="row" gap={1}>
           <Button key={`yes-${scope}`} label="✅ Yes, do it" variant="primary" onPress={() => void act.runPending(pendingConfirm)} />
@@ -202,7 +206,7 @@ export function drawPane(input: PaneInput): RenderElement {
   const brief = ui.brief !== null && ui.brief.day === today && (
     <Box flexDirection="column" gap={1} borderStyle="round" borderColor={BRAND} paddingX={2} paddingY={1}>
       <Box flexDirection="row" justifyContent="space-between">
-        <Text bold color={BRAND}>☀️ Today</Text>
+        <Text bold color={BRAND}>🌞 Today</Text>
         <Button key="brief-dismiss" plain label="✕ Dismiss" onPress={() => void act.patch({ brief: null })} />
       </Box>
       <Text wrap="wrap">{`${plural(ui.brief.today, 'post')} today (${ui.brief.scheduled} still to go)` +
@@ -282,9 +286,9 @@ export function drawPane(input: PaneInput): RenderElement {
 
   const actionOptions = [
     { value: '', label: 'Actions…' },
-    { value: 'compose', label: '✏️ New post…' },
+    { value: 'compose', label: '📝 New post…' },
     { value: 'pause', label: '⏸ Pause publishing' },
-    { value: 'resume', label: '▶️ Resume publishing' },
+    { value: 'resume', label: '🟢 Resume publishing' },
     { value: 'share', label: '🔗 Share as a link…' },
     ...(v === 'day' && movable.length > 0 ? [{ value: 'move', label: "📅 Move this day's posts…" }] : []),
     ...(v === 'week' ? [{ value: 'review', label: '✨ Ask Claude to review this week' }] : []),
@@ -431,7 +435,7 @@ export function drawPane(input: PaneInput): RenderElement {
   const composePanel = panel === 'compose' && compose !== null && (
     <Box flexDirection="column" gap={1} borderStyle="round" borderColor={BRAND} paddingX={2} paddingY={1}>
       <Box flexDirection="row" justifyContent="space-between">
-        <Text bold color={BRAND}>✏️ New post</Text>
+        <Text bold color={BRAND}>📝 New post</Text>
         {closePanel}
       </Box>
       {field('Channel', Select !== null && (
@@ -478,10 +482,10 @@ export function drawPane(input: PaneInput): RenderElement {
       {compose.text !== '' && (
         <Box flexDirection="row" gap={1} flexWrap="wrap" alignItems="center">
           <Text dimColor>{compose.writer === 'claude' ? '✨ Claude:' : '🧡 Social Champ AI:'}</Text>
-          <Button key="ai-shorten" label="✂️ Shorten" onPress={() => void act.aiRewrite('shorten')} />
+          <Button key="ai-shorten" label="✂ Shorten" onPress={() => void act.aiRewrite('shorten')} />
           <Button key="ai-expand" label="➕ Expand" onPress={() => void act.aiRewrite('expand')} />
           <Button key="ai-rephrase" label="🔁 Rephrase" onPress={() => void act.aiRewrite('rephrase')} />
-          <Button key="ai-tags" label="#️⃣ Hashtags" onPress={() => void act.aiHashtags()} />
+          <Button key="ai-tags" label="# Hashtags" onPress={() => void act.aiHashtags()} />
         </Box>
       )}
       {field('🖼 Image', Input !== null && (
@@ -500,7 +504,7 @@ export function drawPane(input: PaneInput): RenderElement {
                   if (prompt === '') return
                   const cap = (await act.readSettings()).imagesPerSession
                   if (act.imagesThisSession() >= cap) {
-                    act.toast(`This session's image limit (${cap}) is used. Raise it in ⚙️ Settings.`)
+                    act.toast(`This session's image limit (${cap}) is used. Raise it in 🔧 Settings.`)
                     return
                   }
                   await act.propose({
@@ -612,7 +616,7 @@ export function drawPane(input: PaneInput): RenderElement {
   const settingsPanel = ui.showSettings && (
     <Box flexDirection="column" gap={1} borderStyle="round" borderDimColor paddingX={2} paddingY={1}>
       <Box flexDirection="row" justifyContent="space-between">
-        <Text bold color={BRAND}>⚙️ Settings</Text>
+        <Text bold color={BRAND}>🔧 Settings</Text>
         <Button key="close-settings" plain label="✕ Close" onPress={() => void act.patch({ showSettings: false })} />
       </Box>
       {Select === null ? <Text dimColor>Settings open on the desktop app.</Text> : (
@@ -655,7 +659,8 @@ export function drawPane(input: PaneInput): RenderElement {
   const attentionLabel = `${attentionCount}${issuesCounts !== null || covers(lastLoad, issueRange.from, issueRange.to) ? '' : '+'}`
   const toolbar = (
     <Box flexDirection="column" gap={1}>
-      <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+      {/* Room on the right: the pane's own close button sits over the last cells of the first line. */}
+      <Box flexDirection="row" justifyContent="space-between" alignItems="center" paddingRight={2}>
         <Box flexDirection="row" gap={1} alignItems="center">
           <Button key="prev" label="‹" onPress={() => void act.shift(-1)} />
           <Button key="today" label="Today" onPress={() => void act.go({ anchor: today })} />
@@ -669,14 +674,16 @@ export function drawPane(input: PaneInput): RenderElement {
               onPress={() => void act.load(true)} />
           </Box>
           <Box key="settings-hover">
-            <Button key="settings" plain label="⚙️" hover={{ color: 'suggestion' }}
+            <Button key="settings" plain label="🔧" hover={{ color: 'suggestion' }}
               onPress={() => void act.patch({ showSettings: !ui.showSettings })} />
           </Box>
         </Box>
       </Box>
       <Box flexDirection="row" gap={1}>
-        {(['week', 'month', 'day', 'issues', 'drafts'] as const).map(name => (
-          <Button key={`view-${name}`} label={TAB_LABELS[name] + (name === 'issues' && attentionCount > 0 ? ` · ${attentionLabel}` : '')}
+        {/* Issues last: its count arrives after the first draw, and a tab shifted right by it can leave a sliver of
+            its old emoji behind in a terminal. */}
+        {(['week', 'month', 'day', 'drafts', 'issues'] as const).map(name => (
+          <Button key={`view-${name}`} label={TAB_LABELS[name] + (name === 'issues' && attentionCount > 0 ? ` (${attentionLabel})` : '')}
             variant={v === name ? 'primary' : 'secondary'} onPress={() => void act.go({ view: name })} />
         ))}
       </Box>
@@ -714,7 +721,7 @@ export function drawPane(input: PaneInput): RenderElement {
           {ws !== 'all' && (
             <Box flexDirection="row" gap={1} flexWrap="wrap">
               <Button key="m-pause" label="⏸ Pause" onPress={() => onAction('pause')} />
-              <Button key="m-resume" label="▶️ Resume" onPress={() => onAction('resume')} />
+              <Button key="m-resume" label="🟢 Resume" onPress={() => onAction('resume')} />
               {v === 'week' && <Button key="m-review" label="✨ Review this week" onPress={() => onAction('review')} />}
               {v === 'day' && <Button key="m-fill" label="✨ Draft posts for this day" onPress={() => onAction('fill-day')} />}
             </Box>
@@ -804,7 +811,7 @@ export function drawPane(input: PaneInput): RenderElement {
         </Box>
         {post.error !== null && (
           <Box borderStyle="round" borderColor="error" paddingX={2} paddingY={1}>
-            <Text color="error" wrap="wrap">⚠️  {post.error}</Text>
+            <Text color="error" wrap="wrap">❗ {post.error}</Text>
           </Box>
         )}
         <Box borderStyle="round" borderDimColor paddingX={2} paddingY={1}>
@@ -821,7 +828,7 @@ export function drawPane(input: PaneInput): RenderElement {
         </Box>
         <Box flexDirection="row" gap={1} flexWrap="wrap">
           {canEdit && Input !== null && (
-            <Button key="tool-edit" label="✏️ Edit text" variant={ui.detailPanel === 'edit' ? 'primary' : 'secondary'}
+            <Button key="tool-edit" label="📝 Edit text" variant={ui.detailPanel === 'edit' ? 'primary' : 'secondary'}
               onPress={() => { act.setTypedEdit(undefined); void act.patch({ detailPanel: 'edit', editing: { postId: post.id, text: post.text } }) }} />
           )}
           {isIgPost && Input !== null && (
@@ -833,7 +840,7 @@ export function drawPane(input: PaneInput): RenderElement {
               onPress={() => void act.patch({ detailPanel: 'copy', copyChannel: post.channelId })} />
           )}
           {Select !== null && (
-            <Button key="tool-recycle" label="♻️ Recycle…" variant={ui.detailPanel === 'recycle' ? 'primary' : 'secondary'}
+            <Button key="tool-recycle" label="🔄 Recycle…" variant={ui.detailPanel === 'recycle' ? 'primary' : 'secondary'}
               onPress={() => {
                 void act.patch({ detailPanel: 'recycle' })
                 if (postWs !== '' && ui.collections[postWs] === undefined) void act.loadCollections(postWs)
@@ -857,7 +864,7 @@ export function drawPane(input: PaneInput): RenderElement {
         </Box>
         {ui.detailPanel === 'edit' && ui.editing?.postId === post.id && Input !== null && (
           <Box flexDirection="column" gap={1} borderStyle="round" borderDimColor paddingX={2} paddingY={1}>
-            <Text bold color={BRAND}>✏️ Edit text</Text>
+            <Text bold color={BRAND}>📝 Edit text</Text>
             <Input key="edit-text" value={ui.editing.text} placeholder="the post's words" submitLabel="Set"
               onInput={(value: string) => { act.setTypedEdit(value) }}
               onSubmit={(value: string) => { act.setTypedEdit(undefined); void act.patch({ editing: { postId: post.id, text: value } }) }} />
@@ -948,14 +955,14 @@ export function drawPane(input: PaneInput): RenderElement {
         )}
         {ui.detailPanel === 'recycle' && Select !== null && (
           <Box flexDirection="column" gap={1} borderStyle="round" borderDimColor paddingX={2} paddingY={1}>
-            <Text bold color={BRAND}>♻️ Recycle into a collection</Text>
+            <Text bold color={BRAND}>🔄 Recycle into a collection</Text>
             {ui.collections[postWs] === undefined ? <Text dimColor>Loading collections…</Text>
               : ui.collections[postWs].length === 0
                 ? <Text dimColor wrap="wrap">This workspace has no recycle collections. Create one in Social Champ (Publish › Recycle).</Text>
                 : (
                   <Select key="recycle-collection" value=""
                     options={[{ value: '', label: 'Choose a collection…' },
-                      ...ui.collections[postWs].slice(0, 62).map(c => ({ value: c.id, label: `♻️ ${c.title} · ${plural(c.postCount, 'post')}` }))]}
+                      ...ui.collections[postWs].slice(0, 62).map(c => ({ value: c.id, label: `🔄 ${c.title} · ${plural(c.postCount, 'post')}` }))]}
                     onSelect={(value: string) => {
                       const collection = ui.collections[postWs]?.find(c => c.id === value)
                       if (collection === undefined) return
@@ -1086,7 +1093,7 @@ export function drawPane(input: PaneInput): RenderElement {
   const draftsBody = ws === 'all'
     ? <Text dimColor>📝 Pick a workspace to see its drafts.</Text>
     : drafts === null || (drafts.isLoading && drafts.items.length === 0)
-      ? <Text dimColor>⏳ Loading drafts…</Text>
+      ? <Text dimColor>Loading drafts…</Text>
       : drafts.error !== null && drafts.items.length === 0
         ? <Text color="warning">{drafts.error}</Text>
         : (
@@ -1161,11 +1168,11 @@ export function drawPane(input: PaneInput): RenderElement {
     body = err !== null && !loading
       ? (
         <Box flexDirection="column">
-          <Text color="error">⚠️  Couldn't load {rangeLabel(v, day)}.</Text>
+          <Text color="error">❗ Couldn't load {rangeLabel(v, day)}.</Text>
           <Text dimColor wrap="wrap">{err}</Text>
         </Box>
       )
-      : <Text dimColor>⏳ Loading {rangeLabel(v, day)} from Social Champ…</Text>
+      : <Text dimColor>Loading {rangeLabel(v, day)} from Social Champ…</Text>
   } else if (v === 'month') {
     const cell = Math.max(5, Math.floor((width - 2) / 7))
     // Seven equal shares of the width where the surface lays out by percent; whole cells elsewhere.
@@ -1226,7 +1233,8 @@ export function drawPane(input: PaneInput): RenderElement {
     body = (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
-          <Box flexDirection="row" justifyContent="space-between">
+          {/* A cell of room on the right: the ballot box in "Select" is drawn wider than it is counted in some terminals. */}
+          <Box flexDirection="row" justifyContent="space-between" paddingRight={1}>
             <Text bold color={failed.length > 0 ? 'error' : undefined}>❌ Failed · {failed.length}</Text>
             {failed.length + pending.length > 0 && selectToggle}
           </Box>
@@ -1373,7 +1381,7 @@ export function drawPane(input: PaneInput): RenderElement {
           </Box>
           <Box flexDirection="row" gap={2} flexWrap="wrap">
             <Text color="suggestion">• scheduled</Text>
-            <Text color="subtle">✓ posted</Text>
+            <Text dimColor>✓ posted</Text>
             <Text color="error">✕ failed</Text>
             <Text color="warning">◷ pending</Text>
             {paused.length > 0 && <Text color="warning">⏸ paused</Text>}
