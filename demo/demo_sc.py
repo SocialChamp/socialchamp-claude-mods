@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""A fake Social Champ MCP server over stdio, for README screenshots only.
+"""A fake Social Champ MCP server over stdio, for trying the calendar mod and for its screenshots.
 
-Serves a made-up brand (Harbor Cafe, Northwind Bakery) whose posts sit around today's
-date. Writes change the in-memory data so before/after screens are consistent.
-No network, no real account.
+Serves a made-up brand (Harbor Cafe, Northwind Bakery) whose posts sit around today's date.
+Moves, edits, labels, new posts and deletes change the in-memory data; every other change
+answers OK and changes nothing. All of it is gone when the server stops. It reads only stdin,
+writes only stdout, and makes no network or file access.
 """
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -76,7 +78,7 @@ def in_range(when, args):
 
 
 def status(p):
-    return 'FAILED' if p.get('hasError') else 'PUBLISHED' if p.get('isPosted') else 'HELD' if p.get('approvalStatus') == 'PENDING' else 'SCHEDULED'
+    return 'FAILED' if p.get('hasError') else 'PUBLISHED' if p.get('isPosted') else 'PENDING_APPROVAL' if p.get('approvalStatus') == 'PENDING' else 'SCHEDULED'
 
 
 def local_day(iso):
@@ -107,10 +109,20 @@ def summary(args):
     return {'counts': rows}
 
 
+def local_zone():
+    """This machine's IANA time zone name (from /etc/localtime), or UTC."""
+    try:
+        target = os.readlink('/etc/localtime')
+        return target.split('zoneinfo/', 1)[1] if 'zoneinfo/' in target else 'UTC'
+    except OSError:
+        return 'UTC'
+
+
 def slots():
-    days = [{'type': t, 'slots': [s + 'T09:00:00.000Z' for s in ['2026-01-05']] + ['2026-01-05T17:00:00.000Z']}
-            for t in ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']]
-    return {'timetable': {'timezoneName': str(NOW.tzinfo) if '/' in str(NOW.tzinfo) else 'UTC', 'days': days}}
+    """Two queue times a day, 9:00 and 17:00 in this machine's zone, on this week's dates."""
+    names = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+    days = [{'type': names[d], 'slots': [at(d, 9), at(d, 17)]} for d in range(7)]
+    return {'timetable': {'timezoneName': local_zone(), 'days': days}}
 
 
 def call(name, args):
@@ -146,20 +158,46 @@ def call(name, args):
     if name == 'suggest_hashtags':
         return {'hashtags': ['hotchocolate', 'cafelife', 'autumn']}
     if name == 'update_post':
+        for item in args.get('items') or [args]:
+            for p in POSTS:
+                if p['id'] == item.get('postId'):
+                    for k in ('dateTime', 'text'):
+                        if k in item:
+                            p[k] = item[k]
+                    p.pop('hasError', None)
+                    p.pop('error', None)
+        return {'ok': True}
+    if name == 'delete_post':
+        POSTS[:] = [p for p in POSTS if p['id'] != args.get('postId')]
+        return {'ok': True}
+    if name in ('label_apply', 'label_remove'):
         for p in POSTS:
             if p['id'] == args.get('postId'):
-                for k in ('dateTime', 'text'):
-                    if k in args:
-                        p[k] = args[k]
-                p.pop('hasError', None)
+                ids = set(p.get('labelIds', []))
+                change = set(args.get('labelIds') or [args.get('labelId')]) - {None}
+                p['labelIds'] = sorted(ids | change if name == 'label_apply' else ids - change)
         return {'ok': True}
+    if name == 'create_text_post' and args.get('saveAsDraft'):
+        DRAFTS.insert(0, {'_id': f'd{len(DRAFTS) + 1}', 'posts': {'ALL': {'post': args.get('text', '')}},
+                          'dateTime': args.get('dateTime'), 'createdBy': 'You'})
+        return {'ok': True, 'id': f'd{len(DRAFTS)}'}
+    if name == 'create_text_post':
+        for i, ch in enumerate(args.get('channelIds') or []):
+            if any(c['id'] == ch for c in CHANNELS):
+                POSTS.append(post(f'n{len(POSTS)}{i}', ch, args.get('text', ''), args.get('dateTime') or at(NOW.weekday(), 23)))
+        return {'ok': True, 'id': f'n{len(POSTS)}'}
     return {'ok': True}
 
 
+# Every tool the mod calls, so no action fails as "not connected".
 TOOLS = ['get_workspaces', 'get_channels', 'get_filtered_channels', 'get_paginated_posts', 'get_posts_for_channels',
          'approval_list_pending', 'label_list', 'get_calendar_events', 'get_calendar_summary', 'get_drafts',
          'get_queue_slots', 'get_shareable_calendars', 'list_collections', 'generate_post', 'rewrite',
-         'suggest_hashtags', 'update_post', 'queue_reorder', 'label_apply', 'label_remove', 'create_text_post']
+         'suggest_hashtags', 'update_post', 'queue_reorder', 'label_create', 'label_apply', 'label_remove',
+         'queue_pause', 'queue_resume', 'create_public_calendar_link', 'update_shareable_calendar',
+         'create_text_post', 'create_image_post', 'generate_image', 'bulk_label', 'bulk_schedule',
+         'instagram_first_comment', 'recycle_post', 'approval_assign', 'approval_approve', 'approval_reject',
+         'delete_post']
 
 
 def reply(rid, result):

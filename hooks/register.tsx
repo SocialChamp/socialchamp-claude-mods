@@ -105,6 +105,9 @@ async function set<K extends Key>($: EngineInterface, key: K, value: Ui[K]) {
 let server = 'SocialChamp'
 // Loads retried in a row while the connector is not reachable (it may still be starting with the session).
 let loadRetries = 0
+let draftsRetries = 0
+// Set when the saved workspace could not be checked because no names were held yet: restored once they arrive.
+let isRestorePending = false
 const LOAD_RETRIES = 4
 const LOAD_RETRY_MS = 3_000
 let loadSeq = 0
@@ -233,6 +236,10 @@ async function loadMeta($: EngineInterface, force = false) {
   await set($, 'channels', meta.channels)
   await set($, 'workspaces', meta.workspaces)
   await $.store.set('meta', meta)
+  if (isRestorePending) {
+    isRestorePending = false
+    await restore($, true)
+  }
 }
 
 /** Loads the posts the current view needs, unless they are already held. */
@@ -241,6 +248,22 @@ async function load($: EngineInterface, force = false) {
   const v = await get($, 'view')
   const { from, to } = loadRange(v, day)
   if (v === 'drafts') {
+    // Drafts need a workspace, and the workspace list needs the connector: it may still be starting.
+    if ((await get($, 'workspaces')).length === 0) {
+      try {
+        await loadMeta($, true)
+        loadRetries = 0
+      } catch (err) {
+        await note($, 'meta', false, err instanceof Error ? err.message : String(err))
+        if (err instanceof UnreachableError && loadRetries < LOAD_RETRIES) {
+          loadRetries++
+          $.clock.after(LOAD_RETRY_MS, () => void load($, true))
+          return
+        }
+        await set($, 'error', reasonOf(err))
+        return
+      }
+    }
     const ws = await get($, 'workspace')
     const held = await get($, 'drafts')
     if (ws !== 'all' && (force || held === null || held.workspaceId !== ws)) await loadDrafts($, ws, false)
@@ -402,6 +425,7 @@ async function loadDrafts($: EngineInterface, workspaceId: string, more: boolean
     const reply = await sc<unknown>($, 'get_drafts', { workspaceId, page, pageSize: DRAFT_PAGE })
     const fresh = parseDrafts(reply)
     const seen = new Set(items.map(d => d.id))
+    draftsRetries = 0
     if (!(await isCurrent())) return
     await patch($, { drafts: {
       workspaceId, items: [...items, ...fresh.filter(d => !seen.has(d.id))], hasMore: fresh.length === DRAFT_PAGE, isLoading: false, error: null,
@@ -410,11 +434,23 @@ async function loadDrafts($: EngineInterface, workspaceId: string, more: boolean
     const text = err instanceof Error ? err.message : String(err)
     await note($, 'drafts', false, text)
     if (!(await isCurrent())) return
+    // As with posts: the connector may still be starting with the session.
+    if (err instanceof UnreachableError && !more && draftsRetries < LOAD_RETRIES) {
+      draftsRetries++
+      $.clock.after(LOAD_RETRY_MS, () => void retryDrafts($, workspaceId))
+      return
+    }
     await patch($, { drafts: {
       workspaceId, items, hasMore: false, isLoading: false,
       error: /owner|delegat/i.test(text) ? 'Drafts are not available on this connection.' : reasonOf(err),
     } })
   }
+}
+
+/** A drafts read retried later, only while that workspace's drafts are still what the pane shows. */
+async function retryDrafts($: EngineInterface, workspaceId: string) {
+  const ui = await current($)
+  if (ui.view === 'drafts' && ui.workspace === workspaceId) await loadDrafts($, workspaceId, false)
 }
 
 /** The New post panel's free slots for a channel: its queue times this week, minus times its posts hold. */
@@ -657,6 +693,7 @@ async function restore($: EngineInterface, keepView: boolean) {
   const settings = await readSettings($)
   const ui = await current($)
   const workspace = last?.workspace ?? settings.defaultWorkspace
+  isRestorePending = ui.workspaces.length === 0 && workspace !== 'all'
   const isWorkspace = workspace === 'all' || ui.workspaces.some(w => w.id === workspace)
   const ws = isWorkspace ? workspace : 'all'
   const channel = last?.channel ?? 'all'
@@ -1310,6 +1347,8 @@ export type Act = ReturnType<typeof makeAct>
 export const register: Register = (on, options) => {
   server = String(options.server ?? 'SocialChamp')
   loadRetries = 0
+  draftsRetries = 0
+  isRestorePending = false
   pollDefault = Number(options.pollMinutes ?? 5)
 
   // Claude's Social Champ calls from chat need a person's yes. A failure before the call refuses it; one after

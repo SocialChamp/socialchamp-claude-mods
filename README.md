@@ -35,8 +35,9 @@ If you schedule social posts with Social Champ and work in Claude Code, you can 
   pause a channel, share the calendar as a link.
 - **Let Claude help.** Claude can draft a week of posts and put them in the pane as a checklist, review your week,
   explain why a post failed, or write a first comment. You approve what goes in.
-- **Stay safe.** Nothing reaches Social Champ until you press **✅ Yes, do it**. When Claude itself tries to change
-  something from the chat, you are asked first, every time, in every permission mode.
+- **Stay safe.** The pane reads your calendar freely, but no change is sent to Social Champ until you press
+  **✅ Yes, do it**. When Claude itself tries to change something from the chat, you are asked first, every time,
+  in every permission mode.
 
 It is a *mod* (a Claude Code plugin with a live pane), built on the
 [Social Champ MCP connector](https://github.com/SocialChamp/socialchamp-mcp).
@@ -45,7 +46,7 @@ It is a *mod* (a Claude Code plugin with a live pane), built on the
 
 | | |
 |---|---|
-| **Claude Code 2.1.293 or later** | In a terminal or in the Claude desktop app's Code tab. Check with `claude --version`; upgrade with `claude update`. Older versions do not run this mod: the pane fails to open with an error about `$.state.get`. |
+| **Claude Code 2.1.293 or later** | In a terminal or in the Claude desktop app's Code tab. Check with `claude --version`; upgrade with `claude update`. Older versions do not run this mod: `/socialchamp-calendar` answers that no hook handled it. |
 | **A Social Champ account** | With at least one connected channel. Some views need you to be the workspace's owner (see [Known limitations](#known-limitations)). |
 | **The Social Champ connector in Claude Code** | Step 1 below adds it. It is Social Champ's official MCP server, and you sign in through your browser. |
 | **Python 3** (only for the demo) | Only to [try the demo](#try-it-without-an-account). Not needed to use the mod. |
@@ -70,8 +71,8 @@ Then sign in:
 `--scope user` makes the connector available in every folder you open Claude Code in. The name `SocialChamp` is the
 one the mod looks for, so nothing else needs setting.
 
-> **Already have the connector under another name** (for example `socialchamp`)? Keep it. After step 3, run
-> `/plugin configure socialchamp-calendar@socialchamp-mods` and enter the name exactly as `/mcp` lists it.
+> **Already have the connector under another name** (for example `socialchamp`)? Keep it, and skip the
+> `claude mcp add` command. You will set the name once in step 3.
 
 ### 2. Install the mod
 
@@ -87,7 +88,12 @@ The first command adds this repository as a source of plugins. The second instal
 
 ### 3. Open the calendar
 
-In Claude Code, run `/reload-plugins` (or start a new session), then:
+In Claude Code, run `/reload-plugins` (or start a new session).
+
+If your connector has a name other than `SocialChamp`, run `/plugin configure socialchamp-calendar@socialchamp-mods`
+now and enter the name exactly as `/mcp` lists it.
+
+Then open the pane:
 
 ```
 /socialchamp-calendar
@@ -99,12 +105,13 @@ day. If you see an error instead, check [Troubleshooting](#troubleshooting).
 ### 4. Only if you use auto mode: allow the Social Champ tools
 
 In auto mode, Claude Code refuses the pane's calls until they are allowed. Add the
-[permission rules](#auto-mode-permission-rules) **after** the pane has opened once. In the default mode you can
-skip this: Claude Code asks you instead.
+[permission rules](#auto-mode-permission-rules) **after** the pane has opened once. In the other modes you can skip
+this step.
 
 ## Try it without an account
 
-You can open the pane on demo data before connecting anything. It needs Claude Code 2.1.293+, Python 3 and git:
+You can open the pane on demo data before connecting a Social Champ account. You need Claude Code 2.1.293+ that you
+are signed in to, Python 3, git and bash (standard on macOS and Linux):
 
 ```bash
 git clone https://github.com/SocialChamp/socialchamp-claude-mods.git
@@ -116,10 +123,15 @@ cd socialchamp-claude-mods && ./demo/try.sh
 
 Add `month`, `day`, `issues` or `drafts` to open another view (`./demo/try.sh month`).
 
-The script starts Claude Code with a small fake Social Champ server ([`demo/demo_sc.py`](demo/demo_sc.py)) as its
-only connector, and runs the mod from the cloned folder. Nothing connects to Social Champ, nothing is sent
-anywhere, and an installed copy of the mod keeps its own settings untouched. Changes you make in the demo only
-change the demo's memory, and are gone when you quit.
+The script opens an ordinary, interactive Claude Code session (leave it with `/exit`). In it, the only connector is
+a small fake Social Champ server, [`demo/demo_sc.py`](demo/demo_sc.py), and the mod runs from the cloned folder:
+
+- **Nothing reaches Social Champ.** Your real connectors are not loaded in that session, and the fake server makes no
+  network or file access. Claude Code itself still works as usual (it talks to Claude when you chat or press
+  **✨ Ask Claude**, using your Claude account).
+- **Your installed copy is untouched.** The demo keeps its own settings and cache, separate from an installed mod.
+- **Demo changes are make-believe.** Moves, edits, labels, new posts and deletes show up until you quit; other
+  changes answer OK and change nothing. Delete the cloned folder when you are done.
 
 ## A tour of the pane
 
@@ -279,21 +291,33 @@ These rules also stop Claude Code itself asking before Claude calls those tools 
 |---|---|
 | *No Social Champ connector named "SocialChamp" is connected* | Run `/mcp`. If the connector is missing, do [step 1](#1-connect-social-champ-to-claude-code). If it is there under another name, set that name with `/plugin configure socialchamp-calendar@socialchamp-mods`. If it says it needs authentication, choose it and **Authenticate**. |
 | *Loading…* for a few seconds when Claude Code starts | Normal: the pane waits for the connector to finish starting, and retries by itself. |
-| The pane does not open, or an error mentions `$.state.get` | Your Claude Code is too old. Run `claude update`, then restart it. |
+| *registered /socialchamp-calendar but no command.run hook answered it*, or an error about `$.state.get` | Your Claude Code is too old (the mod needs 2.1.293 or later). Run `claude update`, then restart it. |
 | *Auto mode blocked this change* | Add the [permission rules](#auto-mode-permission-rules). |
 | No month counts, drafts or queue times | Those connector tools answer only for the workspace's owner. Ask the owner, or use the week and day views. |
-| Approve / Reject missing | Approvals need the `manage_team` scope, which the browser sign-in does not grant. |
+| Approve / Reject missing | Approvals need the `manage_team` scope. The browser sign-in asks only for `read_profile` and `manage_post`. |
 | `/socialchamp-calendar` is unknown | Run `/reload-plugins`, or check `claude plugin list` shows `socialchamp-calendar@socialchamp-mods` as enabled. |
 
 ## Privacy: what stays on your computer
 
-The mod talks only to the Social Champ connector you set up, and to Claude for the writing features you use.
+**Where your data goes.** The pane reads and changes your calendar only through the Social Champ connector you set
+up. It sends something to Claude only when you use a Claude feature:
 
-On your computer, in Claude Code's plugin store (`~/.claude/plugins/store/`, the `socialchamp-calendar` file), it
-keeps: workspace and channel names and ids (refreshed daily, and only reused for the same connector), channels you
-paused from the pane, ids of failures it already told you about, your settings and last view, and a short log of
-its last 30 steps (step name, success, a count, the kind of failure). No post text, error text or links. Delete
-that file to clear it.
+- **✨ Ask Claude why it failed / to review it**: that post's words, its error (if any), its network, status and time.
+- **Polish a draft**: the draft's words.
+- **Writing a new post with Claude**: the topic you type, the channel's name and network, and the words of up to
+  five of that channel's recent posts, so Claude can match their voice (posts that came from feeds are left out).
+- **Hand-offs to the chat** (for example *Ask Claude to draft posts for this day*): a request put in your prompt
+  box, with day names, workspace and channel names, and the time, network, status and first 80 characters of the
+  posts already there (feed posts' words left out). Nothing is sent until you press Enter.
+
+Claude's own tools (`calendar_context`) give it ids, times, statuses and counts, never post words or names.
+
+**What stays on your computer**, in Claude Code's plugin store (`~/.claude/plugins/store/`, the file whose name
+starts with `socialchamp-calendar_socialchamp-mods`): workspace and channel names and ids (refreshed daily, and
+only reused for the same connector), channels you paused from the pane, ids of failures it already told you about,
+your settings and last view, the date of the last morning brief, a note of a change still in progress (cleared when
+it finishes), and a short log of its last 30 steps (step name, success, a count, the kind of failure). No post
+text, error text or links. Delete that file to clear it.
 
 ## Update or remove it
 
@@ -317,8 +341,9 @@ claude plugin uninstall socialchamp-calendar@socialchamp-mods
 claude plugin marketplace remove socialchamp-mods
 ```
 
-Then remove any `mcp__SocialChamp__…` rules you added, and delete the `socialchamp-calendar` file in
-`~/.claude/plugins/store/`. To disconnect Social Champ too: `claude mcp remove SocialChamp --scope user`.
+Then remove the permission rules you added (`mcp__SocialChamp__…`, or your connector's name), and delete the file
+whose name starts with `socialchamp-calendar_socialchamp-mods` in `~/.claude/plugins/store/`. To disconnect Social
+Champ too, run `claude mcp remove SocialChamp --scope user` (with your connector's name if it differs).
 
 ## Known limitations
 
@@ -332,6 +357,8 @@ Then remove any `mcp__SocialChamp__…` rules you added, and delete the `socialc
   the desktop app.
 
 ## For developers
+
+From the root of a clone of this repository:
 
 ```bash
 claude plugin validate .

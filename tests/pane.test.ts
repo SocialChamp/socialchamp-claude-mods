@@ -180,3 +180,83 @@ test('names cached from another connector are not shown: they may be another acc
   expect(calls).toContain('get_channels')
   expect(await ui.find({ text: /Other Account|Cached Elsewhere/ })).toBeUndefined()
 })
+
+test('the drafts view also waits for a connector still starting', async ($, on) => {
+  // Names cached by an earlier session, as on most starts: the saved workspace can be checked before the connector is up.
+  mock.store(on, {
+    storeVersion: 2,
+    settings: { pollMinutes: null, writer: 'claude', defaultWorkspace: 'w1', showStatus: true, imagesPerSession: 1 },
+    meta: { channels: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }], workspaces: [{ id: 'w1', name: 'Social Champ' }], at: Date.now(), server: 'SocialChamp' },
+  })
+  const clock = mock.clock(on, { now: Date.now() })
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  let isUp = false
+  on('mcp.call', (_$, e) => {
+    if (!isUp) return { value: { content: [{ type: 'text', text: `$.mcp.call: no connected MCP tool "${e.tool}" on a server named "${e.server}"` }], isError: true } }
+    const answers: Record<string, unknown> = {
+      get_drafts: { items: [{ _id: 'd1', posts: { ALL: { post: 'Halloween window display' } }, createdBy: 'Maya' }] },
+      get_channels: { items: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }] },
+      get_workspaces: { items: [{ id: 'w1', name: 'Social Champ', profilesCount: 1 }] },
+    }
+    return { value: { content: [{ type: 'text', text: JSON.stringify(answers[e.tool] ?? { items: [] }) }], isError: false } }
+  })
+  await $.command.run({ command: 'socialchamp-calendar', args: 'drafts', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
+  const ui = await $.ui.mount({ plugin: 'socialchamp-calendar', surface: 'desktop', component: 'Pane', requestId: 'socialchamp-calendar', props: PANE })
+  expect(await ui.find({ text: /plugin configure/ })).toBeUndefined()
+  isUp = true
+  await clock.advance(3_000)
+  expect(await ui.find({ text: /Halloween window display/ })).toBeDefined()
+})
+
+const DRAFTS_REPLY = { items: [{ _id: 'd1', posts: { ALL: { post: 'Halloween window display' } }, createdBy: 'Maya' }] }
+const startingConnector = (isUp: () => boolean, drafts: (ws: unknown) => unknown) => (_$: unknown, e: { tool: string; server: string; args: Record<string, unknown> }) => {
+  if (!isUp()) return { value: { content: [{ type: 'text' as const, text: `$.mcp.call: no connected MCP tool "${e.tool}" on a server named "${e.server}"` }], isError: true } }
+  const answers: Record<string, unknown> = {
+    get_drafts: drafts(e.args.workspaceId),
+    get_channels: { items: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }, { id: 'c2', name: 'Other', type: 'FB_PAGE', workspaceId: 'w2' }] },
+    get_workspaces: { items: [{ id: 'w1', name: 'Social Champ', profilesCount: 1 }, { id: 'w2', name: 'Second', profilesCount: 1 }] },
+  }
+  return { value: { content: [{ type: 'text' as const, text: JSON.stringify(answers[e.tool] ?? { items: [] }) }], isError: false } }
+}
+
+test('drafts opened before any names are held: the saved workspace comes back once the connector is up', async ($, on) => {
+  mock.store(on, { storeVersion: 2, settings: { pollMinutes: null, writer: 'claude', defaultWorkspace: 'w1', showStatus: true, imagesPerSession: 1 } })
+  const clock = mock.clock(on, { now: Date.now() })
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  let isUp = false
+  on('mcp.call', startingConnector(() => isUp, () => DRAFTS_REPLY) as never)
+  await $.command.run({ command: 'socialchamp-calendar', args: 'drafts', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
+  const ui = await $.ui.mount({ plugin: 'socialchamp-calendar', surface: 'desktop', component: 'Pane', requestId: 'socialchamp-calendar', props: PANE })
+  isUp = true
+  await clock.advance(3_000)
+  expect(await ui.find({ text: /Halloween window display/ })).toBeDefined()
+})
+
+test('a drafts retry for a workspace already left does not hold up the new one', async ($, on) => {
+  mock.store(on, {
+    storeVersion: 2,
+    settings: { pollMinutes: null, writer: 'claude', defaultWorkspace: 'w1', showStatus: true, imagesPerSession: 1 },
+    meta: { channels: [{ id: 'c1', name: 'Bring Pandas Back', type: 'IN_PAGE', workspaceId: 'w1' }, { id: 'c2', name: 'Other', type: 'FB_PAGE', workspaceId: 'w2' }], workspaces: [{ id: 'w1', name: 'Social Champ' }, { id: 'w2', name: 'Second' }], at: Date.now(), server: 'SocialChamp' },
+  })
+  const clock = mock.clock(on, { now: Date.now() })
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  let isUp = false
+  const asked: unknown[] = []
+  on('mcp.call', startingConnector(() => isUp, ws => {
+    asked.push(ws)
+    return { items: [{ _id: `d-${String(ws)}`, posts: { ALL: { post: `Draft of ${String(ws)}` } }, createdBy: 'Maya' }] }
+  }) as never)
+  await $.command.run({ command: 'socialchamp-calendar', args: 'drafts', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
+  const ui = await $.ui.mount({ plugin: 'socialchamp-calendar', surface: 'desktop', component: 'Pane', requestId: 'socialchamp-calendar', props: PANE })
+  isUp = true
+  await ui.select({ plugin: 'socialchamp-calendar', key: 'ws', value: 'w2' })
+  await clock.advance(3_000)
+  expect(await ui.find({ text: /Draft of w2/ })).toBeDefined()
+  expect(asked).not.toContain('w1')
+})
