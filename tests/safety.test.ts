@@ -95,6 +95,11 @@ test('Social Champ calls are recognised under every server spelling, and nothing
 
 test("Claude's calls: reads pass, metrics and deletes are refused, big batches go to the pane, writes are asked", () => {
   expect(chatVerdict('get_paginated_posts', {}, NOW)).toEqual({ kind: 'pass' })
+  // Media uploads publish nothing; the post that uses them is still asked.
+  expect(chatVerdict('create_media_upload', { fileName: 'a.mp4' }, NOW)).toEqual({ kind: 'pass' })
+  expect(chatVerdict('complete_media_upload', { uploadId: 'u', uploadToken: 't' }, NOW)).toEqual({ kind: 'pass' })
+  expect(chatVerdict('import_media_from_url', { url: 'https://x/a.png' }, NOW)).toEqual({ kind: 'pass' })
+  expect(chatVerdict('update_post', { postId: 'p', coverMediaId: 'm' }, NOW)).toMatchObject({ kind: 'ask' })
   expect(chatVerdict('get_post_metrics', {}, NOW)).toMatchObject({ kind: 'deny' })
   expect(chatVerdict('get_best_times', {}, NOW)).toMatchObject({ kind: 'deny' })
   expect(chatVerdict('delete_post', { postId: 'p' }, NOW)).toMatchObject({ kind: 'deny' })

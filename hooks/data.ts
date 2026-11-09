@@ -513,6 +513,12 @@ export const CHAT_READS = new Set([
   'label_list', 'list_collections', 'location_search', 'approval_list_pending', 'generate_post', 'rewrite', 'suggest_hashtags',
 ])
 
+/**
+ * Media uploads only put a file in the media library: no post is made, changed or published until a later
+ * create or update_post, which is still asked. Exact names, never a pattern.
+ */
+export const CHAT_MEDIA_STAGING = new Set(['create_media_upload', 'complete_media_upload', 'import_media_from_url'])
+
 /** Refused to Claude whatever the permission mode: metrics (Facebook policy) and permanent deletes. */
 const CHAT_DENIED: Record<string, string> = {
   get_post_metrics: 'Post metrics are off: Facebook does not allow passing them to a third party.',
@@ -601,7 +607,7 @@ export type ChatVerdict =
 
 /** What happens to Claude's call of Social Champ tool `name`: passed, refused with a reason, or put to the person. */
 export const chatVerdict = (name: string, args: Record<string, unknown>, now: number): ChatVerdict => {
-  if (CHAT_READS.has(name)) return { kind: 'pass' }
+  if (CHAT_READS.has(name) || CHAT_MEDIA_STAGING.has(name)) return { kind: 'pass' }
   const denied = CHAT_DENIED[name]
   if (denied !== undefined) return { kind: 'deny', reason: denied }
   if ((name === 'bulk_delete' || name === 'queue_clear') && args.dryRun !== true) {
