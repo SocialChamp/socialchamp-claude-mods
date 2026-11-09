@@ -82,9 +82,9 @@ it happens in a pane beside your chat, and no change from the pane reaches Socia
 
 **Stay in control**
 - Every change in the pane is shown first, with whether and where it can be undone, and sent only after your Yes.
-- When Claude itself tries to change something in Social Champ from the chat, you are asked first, every time, in
-  every permission mode. Deleting posts, reading post metrics or best times, and large batches are refused from
-  the chat.
+- When Claude itself changes something in Social Champ from the chat, it runs straight away, batches included. Turn
+  on `askBeforeChanges` (see [Settings](#settings)) to be asked first every time. Deleting posts and reading post
+  metrics or best times are refused from the chat either way.
 - **🔧 Settings** in the pane: how often to check for failures, who writes new posts, AI images per session, and
   the workspace the pane opens on the first time (after that it opens where you left it).
 - Works in the terminal and the Claude desktop app. On the Claude phone app the pane uses buttons only: you can look,
@@ -284,9 +284,9 @@ undo, the pane re-reads the post and stops if someone changed it in Social Champ
 |---|---|
 | Read posts, channels, drafts, labels | Allowed. |
 | Upload media (a video, image or cover) | Allowed. It only puts the file in your media library; the post that uses it is still asked. |
-| Change something (schedule, edit, label, pause…) | You are asked in Claude Code's question dialog, with every argument shown (long values shortened; post words in full, or the call is refused), **PUBLISHES NOW** when it would go out at once (a new post with no time, or with a time already past), and a warning when it asks to move a post to a time already past (Social Champ refuses those). Dismissing the question refuses it. |
+| Change something (schedule, edit, label, pause…) | Runs straight away. With `askBeforeChanges` on, you are asked in Claude Code's question dialog, with every argument shown (long values shortened; post words in full, or the call is refused), **PUBLISHES NOW** when it would go out at once (a new post with no time, or with a time already past), and a warning when it asks to move a post to a time already past (Social Champ refuses those). Dismissing the question refuses it. |
 | Delete posts | Refused. Delete in the pane (it asks you) or in Social Champ. |
-| Send more than 10 posts in one batch (bulk schedule, bulk label, queue reorder, bulk delete) | Refused. Claude stages them in the pane instead, where you tick and confirm. |
+| Send more than 10 posts in one batch (bulk schedule, bulk label, queue reorder) | Runs straight away. With `askBeforeChanges` on, refused: Claude stages them in the pane instead, where you tick and confirm. |
 | Read post metrics or best times | Refused. Facebook does not allow passing metrics to a third party. |
 | Anything, when the mod's check itself fails | Refused before it runs. |
 
@@ -338,6 +338,9 @@ These rules also stop Claude Code itself asking before Claude calls those tools 
 - **Plugin options**: run `/plugin configure socialchamp-calendar@socialchamp-mods`.
   - `server`: the connector's name as `/mcp` lists it (default `SocialChamp`).
   - `pollMinutes`: how often to check today's posts for failures (default 5; 0 turns it off).
+  - `askBeforeChanges`: off by default, so Claude creates, edits and schedules posts from the chat without a
+    question and with no batch limit (bulk uploads of 50+ posts). Turn it on to be shown every change first, with
+    batches over 10 sent to the pane. Deletes and metrics are refused either way.
 
 ## Troubleshooting
 

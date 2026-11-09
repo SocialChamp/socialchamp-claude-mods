@@ -1,6 +1,6 @@
 {
   "name": "socialchamp-calendar",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Social Champ calendar inside Claude Code: week, month and day views, failed-post watch, approvals",
   "author": {
     "name": "Social Champ"
@@ -18,6 +18,12 @@
       "title": "Watch interval (minutes)",
       "description": "How often to check today's posts for failures; 0 turns the watch off",
       "default": 5
+    },
+    "askBeforeChanges": {
+      "type": "boolean",
+      "title": "Ask before Claude changes Social Champ",
+      "description": "Off by default: Claude creates, edits and schedules posts from the chat straight away, with no batch limit. Turn on to be shown each change first (batches over 10 then go to the pane). Deletes and metrics are refused either way",
+      "default": false
     }
   }
 }

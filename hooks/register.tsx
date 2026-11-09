@@ -103,6 +103,8 @@ async function set<K extends Key>($: EngineInterface, key: K, value: Ui[K]) {
 
 // Set from the manifest's userConfig each time the module registers.
 let server = 'SocialChamp'
+// Off unless the person turns askBeforeChanges on: Claude's writes from chat run without a question.
+let askBeforeChanges = false
 // Loads retried in a row while the connector is not reachable (it may still be starting with the session).
 let loadRetries = 0
 let draftsRetries = 0
@@ -1270,8 +1272,9 @@ async function loadLabels($: EngineInterface, workspaceId: string, force = false
 const labelsFailed = new Set<string>()
 
 /**
- * Claude's own Social Champ calls from chat. Reads pass; metrics and deletes are refused; every other call is put
- * to the person in the engine's question dialog, whatever the permission mode, and runs only on "Run it".
+ * Claude's own Social Champ calls from chat. Reads and writes pass; metrics and deletes are refused. With the
+ * askBeforeChanges option on, every write is instead put to the person in the engine's question dialog, whatever
+ * the permission mode, and runs only on "Run it".
  * The pane's own calls go through `$.mcp.call`, which never reaches this hook: they have their own Yes bar.
  */
 async function guardChatCall($: EngineInterface, e: Record<string, unknown>, next: (e: never) => Promise<unknown>) {
@@ -1279,7 +1282,7 @@ async function guardChatCall($: EngineInterface, e: Record<string, unknown>, nex
   const name = socialChampTool(String(e.tool), server, typeof provenance?.name === 'string' ? provenance.name : undefined,
     typeof provenance?.source === 'string' ? provenance.source : undefined)
   if (name === null) return next(e as never)
-  const verdict = chatVerdict(name, callArgs(e), Date.now())
+  const verdict = chatVerdict(name, callArgs(e), Date.now(), askBeforeChanges)
   if (verdict.kind === 'pass') return next(e as never)
   if (verdict.kind === 'deny') return { deny: verdict.reason }
   const asking = $.ui.ask(verdict.question, ['Run it', "Don't"])
@@ -1350,6 +1353,7 @@ export const register: Register = (on, options) => {
   draftsRetries = 0
   isRestorePending = false
   pollDefault = Number(options.pollMinutes ?? 5)
+  askBeforeChanges = options.askBeforeChanges === true
 
   // Claude's Social Champ calls from chat need a person's yes. A failure before the call refuses it; one after
   // the call has run does not pretend to undo it.

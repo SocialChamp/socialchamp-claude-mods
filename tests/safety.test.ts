@@ -108,6 +108,12 @@ test("Claude's calls: reads pass, metrics and deletes are refused, big batches g
   expect(chatVerdict('bulk_delete', { dryRun: false, postIds: ['p'] }, NOW)).toMatchObject({ kind: 'deny' })
   const many = Array.from({ length: CHAT_BATCH_LIMIT + 1 }, (_, i) => ({ postId: `p${i}`, dateTime: LATER }))
   expect(chatVerdict('queue_reorder', { items: many }, NOW)).toMatchObject({ kind: 'deny', reason: expect.stringMatching(/stage_posts/) })
+  // With askBeforeChanges off, writes and big batches pass; deletes and metrics are still refused.
+  expect(chatVerdict('create_text_post', { text: 'Hi', channelIds: ['c1'] }, NOW, false)).toEqual({ kind: 'pass' })
+  expect(chatVerdict('bulk_schedule', { posts: many }, NOW, false)).toEqual({ kind: 'pass' })
+  expect(chatVerdict('delete_post', { postId: 'p' }, NOW, false)).toMatchObject({ kind: 'deny' })
+  expect(chatVerdict('bulk_delete', { postIds: ['p'] }, NOW, false)).toMatchObject({ kind: 'deny' })
+  expect(chatVerdict('get_post_metrics', {}, NOW, false)).toMatchObject({ kind: 'deny' })
   // A tool this list has never seen is a write.
   expect(chatVerdict('brand_new_tool', { x: 1 }, NOW)).toMatchObject({ kind: 'ask' })
 

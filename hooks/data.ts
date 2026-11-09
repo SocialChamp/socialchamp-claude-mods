@@ -605,8 +605,12 @@ export type ChatVerdict =
   | { kind: 'deny'; reason: string }
   | { kind: 'ask'; question: string }
 
-/** What happens to Claude's call of Social Champ tool `name`: passed, refused with a reason, or put to the person. */
-export const chatVerdict = (name: string, args: Record<string, unknown>, now: number): ChatVerdict => {
+/**
+ * What happens to Claude's call of Social Champ tool `name`: passed, refused with a reason, or put to the person.
+ * With `ask` false (the `askBeforeChanges` option turned off) writes pass unasked and batches have no limit;
+ * metrics and deletes are still refused.
+ */
+export const chatVerdict = (name: string, args: Record<string, unknown>, now: number, ask = true): ChatVerdict => {
   if (CHAT_READS.has(name) || CHAT_MEDIA_STAGING.has(name)) return { kind: 'pass' }
   const denied = CHAT_DENIED[name]
   if (denied !== undefined) return { kind: 'deny', reason: denied }
@@ -614,6 +618,7 @@ export const chatVerdict = (name: string, args: Record<string, unknown>, now: nu
     return { kind: 'deny', reason: 'Deleting posts from chat is off; a dry run (dryRun: true) is allowed. Delete them in Social Champ itself.' }
   }
   if (name === 'bulk_delete' || name === 'queue_clear') return { kind: 'pass' }
+  if (!ask) return { kind: 'pass' }
   const batchKey = BATCH_KEYS[name]
   const batch = batchKey !== undefined && Array.isArray(args[batchKey]) ? (args[batchKey] as unknown[]).length : 0
   if (batch > CHAT_BATCH_LIMIT) {
